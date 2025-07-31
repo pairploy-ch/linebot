@@ -111,7 +111,7 @@ export default function TaskManager() {
             </h3>
             
             <p className="text-gray-600 text-sm mb-6">
-              การลบนี้ไม่สามารถกู้คืนได้ คุณแน่ใจหรือไม่ที่จะลบ task นี้?
+              คุณแน่ใจหรือไม่ที่จะลบ task นี้?
             </p>
             
             <div className="flex space-x-3">
@@ -401,6 +401,7 @@ const setupTasksListener = () => {
                 setNewTask({ ...newTask, title: e.target.value })
               }
               placeholder="แจ้งเตือนส่งงาน"
+              style={{color: '#000'}}
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -414,6 +415,7 @@ const setupTasksListener = () => {
               onChange={(e) =>
                 setNewTask({ ...newTask, detail: e.target.value })
               }
+              style={{color: '#000'}}
               placeholder="ส่ง Figma Version 1 ให้ บริษัท A"
               rows={4}
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
@@ -431,6 +433,7 @@ const setupTasksListener = () => {
                 onChange={(e) =>
                   setNewTask({ ...newTask, date: e.target.value })
                 }
+                style={{color: '#000'}}
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -447,6 +450,7 @@ const setupTasksListener = () => {
                 onChange={(e) =>
                   setNewTask({ ...newTask, time: e.target.value })
                 }
+                style={{color: '#000'}}
                 className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -458,6 +462,7 @@ const setupTasksListener = () => {
             </label>
             <div className="relative">
               <select
+                 style={{color: '#000'}}
                 value={newTask.repeat}
                 onChange={(e) =>
                   setNewTask({ ...newTask, repeat: e.target.value })
@@ -541,7 +546,8 @@ const setupTasksListener = () => {
               onChange={(e) =>
                 setEditingTask({ ...editingTask, title: e.target.value })
               }
-              placeholder="แจ้งเตือนส่งงาน"
+              style={{color: '#000'}}
+              placeholder="กรอกชื่อ Task"
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -555,7 +561,7 @@ const setupTasksListener = () => {
               onChange={(e) =>
                 setEditingTask({ ...editingTask, detail: e.target.value })
               }
-              placeholder="ส่ง Figma Version 1 ให้ บริษัท A"
+              placeholder="กรอกรายละเอียด Task"
               rows={4}
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
@@ -572,6 +578,7 @@ const setupTasksListener = () => {
                 onChange={(e) =>
                   setEditingTask({ ...editingTask, date: e.target.value })
                 }
+                style={{color: '#000'}}
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -588,6 +595,7 @@ const setupTasksListener = () => {
                 onChange={(e) =>
                   setEditingTask({ ...editingTask, time: e.target.value })
                 }
+                style={{color: '#000'}}
                 className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
