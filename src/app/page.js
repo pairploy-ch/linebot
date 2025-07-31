@@ -510,10 +510,10 @@ const setupTasksListener = () => {
               >
                 <Plus className="w-6 h-6 text-blue-600" />
               </button>
-
+{/* 
               <button className="p-3">
                 <Menu className="w-10 h-10 text-gray-400" />
-              </button>
+              </button> */}
             </div>
           </div>
         </div>
@@ -674,9 +674,9 @@ const setupTasksListener = () => {
                 <Plus className="w-6 h-6 text-blue-600" />
               </button>
 
-              <button className="p-3">
+              {/* <button className="p-3">
                 <Menu className="w-10 h-10 text-gray-400" />
-              </button>
+              </button> */}
             </div>
           </div>
         </div>
@@ -822,9 +822,9 @@ const setupTasksListener = () => {
                   <Plus className="w-6 h-6 text-blue-600" />
                 </button>
 
-                <button className="p-3">
+                {/* <button className="p-3">
                   <Menu className="w-10 h-10 text-gray-400" />
-                </button>
+                </button> */}
               </div>
             </div>
           </div>
