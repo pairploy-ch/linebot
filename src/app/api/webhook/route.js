@@ -7,7 +7,7 @@ const app = express();
 const port = 3001;
 
 
-const serviceAccountPath = path.join(__dirname, "firebase-key.json");
+const serviceAccountPath = JSON.parse(process.env.FIREBASE_CONFIG_JSON);
 
 if (!admin.apps.length) {
   admin.initializeApp({
