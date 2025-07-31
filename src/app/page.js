@@ -272,55 +272,71 @@ export default function TaskManager() {
     return `${formatted} UTC+7`;
   };
 
-  const fetchTasks = async () => {
-    try {
-      setLoading(true);
-
-      const querySnapshot = await getDocs(
-        collection(db, "tasks"),
-        where("userId", "==", session.lineUserId)
-      );
-      const tasksData = [];
-
-      querySnapshot.forEach((doc) => {
-        tasksData.push({
-          id: doc.id,
-          ...doc.data(),
-        });
-      });
-
-      console.log("Set Tasks:", tasksData, session);
-      setTasks(tasksData);
-    } catch (error) {
-      console.error("Error fetching tasks:", error);
-    } finally {
-      setLoading(false);
+const fetchTasks = async () => {
+  try {
+    setLoading(true);
+    
+    // ตรวจสอบว่ามี lineUserId และ userName
+    if (!session?.lineUserId || !session?.user?.name) {
+      console.log("No valid session data");
+      setTasks([]);
+      return;
     }
-  };
-
-  const setupTasksListener = () => {
-    if (!session?.lineUserId) return;
 
     const q = query(
       collection(db, "tasks"),
       where("userId", "==", session.lineUserId),
+      where("userName", "==", session.user.name), // เพิ่ม filter userName ด้วย
       orderBy("createdAt", "desc")
     );
+    
+    const querySnapshot = await getDocs(q);
+    const tasksData = [];
 
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const tasksData = [];
-      querySnapshot.forEach((doc) => {
-        tasksData.push({
-          id: doc.id,
-          ...doc.data(),
-        });
+    querySnapshot.forEach((doc) => {
+      tasksData.push({
+        id: doc.id,
+        ...doc.data(),
       });
-      setTasks(tasksData);
-      setLoading(false);
     });
 
-    return unsubscribe;
-  };
+    console.log("Fetched tasks for user:", session.user.name, "ID:", session.lineUserId);
+    setTasks(tasksData);
+  } catch (error) {
+    console.error("Error fetching tasks:", error);
+  } finally {
+    setLoading(false);
+  }
+};
+
+const setupTasksListener = () => {
+  if (!session?.lineUserId || !session?.user?.name) {
+    console.log("Invalid session for listener");
+    return;
+  }
+
+  const q = query(
+    collection(db, "tasks"),
+    where("userId", "==", session.lineUserId),
+    where("userName", "==", session.user.name), // เพิ่ม filter นี้
+    orderBy("createdAt", "desc")
+  );
+
+  const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    const tasksData = [];
+    querySnapshot.forEach((doc) => {
+      tasksData.push({
+        id: doc.id,
+        ...doc.data(),
+      });
+    });
+    console.log("Real-time tasks for:", session.user.name, tasksData.length, "tasks");
+    setTasks(tasksData);
+    setLoading(false);
+  });
+
+  return unsubscribe;
+};
 
   useEffect(() => {
     if (session?.lineUserId) {
