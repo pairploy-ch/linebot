@@ -400,7 +400,7 @@ const setupTasksListener = () => {
               onChange={(e) =>
                 setNewTask({ ...newTask, title: e.target.value })
               }
-              placeholder="แจ้งเตือนส่งงาน"
+              placeholder="กรอกชื่อ Task"
               style={{color: '#000'}}
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
@@ -416,7 +416,7 @@ const setupTasksListener = () => {
                 setNewTask({ ...newTask, detail: e.target.value })
               }
               style={{color: '#000'}}
-              placeholder="ส่ง Figma Version 1 ให้ บริษัท A"
+              placeholder="กรอกรายละเอียด Task"
               rows={4}
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
@@ -462,7 +462,7 @@ const setupTasksListener = () => {
             </label>
             <div className="relative">
               <select
-                 style={{color: '#000'}}
+                style={{color: '#000'}}
                 value={newTask.repeat}
                 onChange={(e) =>
                   setNewTask({ ...newTask, repeat: e.target.value })
@@ -561,6 +561,7 @@ const setupTasksListener = () => {
               onChange={(e) =>
                 setEditingTask({ ...editingTask, detail: e.target.value })
               }
+              style={{color: '#000'}}
               placeholder="กรอกรายละเอียด Task"
               rows={4}
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
@@ -607,6 +608,7 @@ const setupTasksListener = () => {
             </label>
             <div className="relative">
               <select
+                style={{color: '#000'}}
                 value={editingTask.status}
                 onChange={(e) =>
                   setEditingTask({ ...editingTask, status: e.target.value })
@@ -627,6 +629,7 @@ const setupTasksListener = () => {
             </label>
             <div className="relative">
               <select
+              style={{color: '#000'}}
                 value={editingTask.repeat}
                 onChange={(e) =>
                   setEditingTask({ ...editingTask, repeat: e.target.value })
