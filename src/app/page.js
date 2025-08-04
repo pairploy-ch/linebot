@@ -12,6 +12,9 @@ import {
   X,
   Edit,
   Trash2,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
 
@@ -39,6 +42,8 @@ export default function TaskManager() {
   const [editingTask, setEditingTask] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState(null);
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(null);
   const [newTask, setNewTask] = useState({
     title: "",
     detail: "",
@@ -382,6 +387,517 @@ const setupTasksListener = () => {
     }
   };
 
+  // Calendar functions
+  const getDaysInMonth = (date) => {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  };
+
+  const getFirstDayOfMonth = (date) => {
+    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+  };
+
+  const getTasksForDate = (date) => {
+    const targetYear = date.getFullYear();
+    const targetMonth = date.getMonth();
+    const targetDay = date.getDate();
+    
+    return tasks.filter(task => {
+      if (!task.date) return false;
+      try {
+        let taskDate;
+        if (typeof task.date === "string") {
+          if (task.date.includes("at") && task.date.includes("UTC+7")) {
+            const cleanStr = task.date.replace(" at ", " ").replace(" UTC+7", "");
+            taskDate = new Date(cleanStr);
+          } else if (task.date.includes("UTC+7")) {
+            const cleanStr = task.date.replace(" UTC+7", "");
+            taskDate = new Date(cleanStr);
+          } else {
+            taskDate = new Date(task.date);
+          }
+        }
+        
+        if (isNaN(taskDate.getTime())) return false;
+        
+        // เปรียบเทียบแบบแยก year, month, day
+        return taskDate.getFullYear() === targetYear &&
+               taskDate.getMonth() === targetMonth &&
+               taskDate.getDate() === targetDay;
+      } catch (error) {
+        console.error("Error parsing task date:", error, task.date);
+        return false;
+      }
+    });
+  };
+
+  const navigateMonth = (direction) => {
+    setCurrentDate(prev => {
+      const newDate = new Date(prev);
+      newDate.setMonth(prev.getMonth() + direction);
+      return newDate;
+    });
+  };
+
+  const renderCalendar = () => {
+    const daysInMonth = getDaysInMonth(currentDate);
+    const firstDay = getFirstDayOfMonth(currentDate);
+    const today = new Date();
+    
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    
+    const days = [];
+    
+    // Add empty cells for days before the first day of the month
+    for (let i = 0; i < firstDay; i++) {
+      days.push(<div key={`empty-${i}`} className="h-12"></div>);
+    }
+    
+    // Add days of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+      const isToday = date.toDateString() === today.toDateString();
+      const isSelected = selectedDate && date.toDateString() === selectedDate.toDateString();
+      const tasksForDay = getTasksForDate(date);
+      
+      days.push(
+        <button
+          key={day}
+          onClick={() => setSelectedDate(date)}
+          className="h-12 relative hover:bg-gray-50 rounded-lg transition-colors p-1"
+        >
+          <div className={`w-10 h-10 flex items-center justify-center rounded-full text-sm font-medium transition-colors ${
+            isToday ? 'bg-black text-white' : 
+            isSelected ? 'bg-blue-500 text-white' :
+            'text-gray-900 hover:bg-gray-100'
+          }`}>
+            {day}
+          </div>
+          {tasksForDay.length > 0 && (
+            <div className="flex absolute -bottom-1 left-1/2 transform -translate-x-1/2 space-x-1">
+              {tasksForDay.slice(0, 3).map((task, index) => (
+                <div
+                  key={index}
+                  className={`w-2 h-2 rounded-full ${
+                    task.status === 'Completed' ? 'bg-green-400' :
+                    task.status === 'Overdue' ? 'bg-red-400' : 'bg-blue-400'
+                  }`}
+                />
+              ))}
+              {tasksForDay.length > 3 && (
+                <div className="w-2 h-2 rounded-full bg-gray-400" />
+              )}
+            </div>
+          )}
+        </button>
+      );
+    }
+
+    return (
+      <div className="bg-white rounded-xl p-6 mx-4 shadow-sm">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">
+            {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
+          </h2>
+          <div className="flex space-x-2">
+            <button
+              onClick={() => navigateMonth(-1)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ChevronLeft className="w-5 h-5 text-gray-600" />
+            </button>
+            <button
+              onClick={() => navigateMonth(1)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ChevronRight className="w-5 h-5 text-gray-600" />
+            </button>
+          </div>
+        </div>
+
+        {/* Day names */}
+        <div className="grid grid-cols-7 gap-2 mb-4">
+          {dayNames.map(day => (
+            <div key={day} className="text-center text-sm font-medium text-gray-500 py-2">
+              {day}
+            </div>
+          ))}
+        </div>
+
+        {/* Calendar grid */}
+        <div className="grid grid-cols-7 gap-2">
+          {days}
+        </div>
+      </div>
+    );
+  };
+
+  const renderSelectedDateTasks = () => {
+    if (!selectedDate) return null;
+
+    const selectedTasks = getTasksForDate(selectedDate);
+    const dateStr = selectedDate.toLocaleDateString('th-TH', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    // Debug information
+    console.log("Selected Date:", selectedDate);
+    console.log("All tasks:", tasks);
+    console.log("Tasks for selected date:", selectedTasks);
+
+    return (
+      <div className="mx-4 mt-6">
+        <div className="bg-white rounded-xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">
+              Tasks for {dateStr}
+            </h3>
+            <button
+              onClick={() => setSelectedDate(null)}
+              className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+            >
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+          </div>
+
+          {/* Debug information */}
+          {/* <div className="mb-4 p-2 bg-gray-50 rounded text-xs text-gray-600">
+            <div>Selected: {selectedDate.toISOString()}</div>
+            <div>Total tasks: {tasks.length}</div>
+            <div>Filtered tasks: {selectedTasks.length}</div>
+            {tasks.length > 0 && (
+              <div>Sample task date: {tasks[0]?.date}</div>
+            )}
+          </div> */}
+
+          {selectedTasks.length === 0 ? (
+            <div className="text-center py-8">
+              <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                <Calendar className="w-8 h-8 text-gray-400" />
+              </div>
+              <p className="text-gray-500 mb-4">No tasks for this day</p>
+              <button
+                onClick={() => {
+                  const dateStr = selectedDate.toISOString().split('T')[0];
+                  setNewTask({
+                    ...newTask,
+                    date: dateStr,
+                    time: "09:00"
+                  });
+                  setCurrentView("addTask");
+                }}
+                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                Add Task for This Day
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {selectedTasks
+                .sort((a, b) => {
+                  try {
+                    const timeA = new Date(a.date.includes("UTC+7") ? a.date.replace(" UTC+7", "") : a.date);
+                    const timeB = new Date(b.date.includes("UTC+7") ? b.date.replace(" UTC+7", "") : b.date);
+                    return timeA - timeB;
+                  } catch {
+                    return 0;
+                  }
+                })
+                .map((task) => {
+                  let timeStr = "";
+                  try {
+                    let taskDate;
+                    if (typeof task.date === "string") {
+                      if (task.date.includes("at") && task.date.includes("UTC+7")) {
+                        const cleanStr = task.date.replace(" at ", " ").replace(" UTC+7", "");
+                        taskDate = new Date(cleanStr);
+                      } else if (task.date.includes("UTC+7")) {
+                        const cleanStr = task.date.replace(" UTC+7", "");
+                        taskDate = new Date(cleanStr);
+                      } else {
+                        taskDate = new Date(task.date);
+                      }
+                    }
+                    if (!isNaN(taskDate.getTime())) {
+                      timeStr = taskDate.toLocaleTimeString('th-TH', {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      });
+                    }
+                  } catch (error) {
+                    timeStr = "Invalid time";
+                  }
+
+                  return (
+                    <div
+                      key={task.id}
+                      className={`border-l-4 ${getTaskBorderColor(task.color)} rounded-r-lg p-4`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <Clock className="w-4 h-4 text-gray-500" />
+                            <span className="text-sm text-gray-500">{timeStr}</span>
+                            <span
+                              className={`px-2 py-1 rounded-full text-xs font-medium text-white ${getStatusColor(
+                                task.status
+                              )}`}
+                            >
+                              {task.status}
+                            </span>
+                          </div>
+                          <h4 className="font-semibold text-gray-900 mb-1">
+                            {task.title}
+                          </h4>
+                          {task.detail && (
+                            <p className="text-gray-600 text-sm mb-2">
+                              {task.detail}
+                            </p>
+                          )}
+                          <div className="flex items-center text-gray-500 text-xs">
+                            <span>Repeat: {task.repeat}</span>
+                          </div>
+                        </div>
+                        
+                        {task.status === "Upcoming" && (
+                          <div className="flex space-x-2 ml-4">
+                            <button
+                              onClick={() => handleEditTask(task)}
+                              className="flex items-center space-x-1 text-xs px-2 py-1 bg-blue-100 text-blue-600 rounded-md hover:bg-blue-200 transition-colors"
+                            >
+                              <Edit className="w-3 h-3" />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTask(task.id)}
+                              className="flex items-center space-x-1 text-xs px-2 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              
+              <div className="pt-4">
+                <button
+                  onClick={() => {
+                    const dateStr = selectedDate.toISOString().split('T')[0];
+                    setNewTask({
+                      ...newTask,
+                      date: dateStr,
+                      time: "09:00"
+                    });
+                    setCurrentView("addTask");
+                  }}
+                  className="w-full bg-blue-50 text-blue-600 py-3 rounded-lg hover:bg-blue-100 transition-colors flex items-center justify-center space-x-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add New Task</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const getTodayTasks = () => {
+    const today = new Date();
+    return getTasksForDate(today);
+  };
+
+  const renderTodaySchedule = () => {
+    // If a date is selected, don't show today's schedule
+    if (selectedDate) return null;
+    
+    const todayTasks = getTodayTasks();
+    const morningTasks = todayTasks.filter(task => {
+      try {
+        let taskDate;
+        if (typeof task.date === "string") {
+          if (task.date.includes("at") && task.date.includes("UTC+7")) {
+            const cleanStr = task.date.replace(" at ", " ").replace(" UTC+7", "");
+            taskDate = new Date(cleanStr);
+          } else if (task.date.includes("UTC+7")) {
+            const cleanStr = task.date.replace(" UTC+7", "");
+            taskDate = new Date(cleanStr);
+          } else {
+            taskDate = new Date(task.date);
+          }
+        }
+        return taskDate.getHours() < 12;
+      } catch {
+        return false;
+      }
+    });
+
+    const eveningTasks = todayTasks.filter(task => {
+      try {
+        let taskDate;
+        if (typeof task.date === "string") {
+          if (task.date.includes("at") && task.date.includes("UTC+7")) {
+            const cleanStr = task.date.replace(" at ", " ").replace(" UTC+7", "");
+            taskDate = new Date(cleanStr);
+          } else if (task.date.includes("UTC+7")) {
+            const cleanStr = task.date.replace(" UTC+7", "");
+            taskDate = new Date(cleanStr);
+          } else {
+            taskDate = new Date(task.date);
+          }
+        }
+        return taskDate.getHours() >= 18;
+      } catch {
+        return false;
+      }
+    });
+
+    return (
+      <div className="mx-4 mt-6 space-y-6">
+        {/* Timeline */}
+        <div className="bg-white rounded-xl p-6 shadow-sm">
+          <div className="space-y-8">
+            {/* Morning Task */}
+            {morningTasks.length > 0 && (
+              <div className="flex items-center space-x-4">
+                <div className="text-gray-500 text-sm w-12">08:00</div>
+                <div className="flex-shrink-0">
+                  <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                    <Clock className="w-6 h-6 text-red-500" />
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center space-x-2 mb-1">
+                    <span className="text-sm text-gray-500">08:00 ↻</span>
+                  </div>
+                  <h3 className="font-semibold text-gray-900 text-lg">{morningTasks[0].title}</h3>
+                </div>
+                <div className={`w-6 h-6 rounded-full border-2 ${
+                  morningTasks[0].status === 'Completed' ? 'bg-red-500 border-red-500' : 'border-red-300'
+                }`} />
+              </div>
+            )}
+
+            {/* Time indicator */}
+            <div className="flex items-center space-x-4">
+              <div className="text-gray-500 text-sm w-12">12:00</div>
+              <div className="flex-shrink-0 w-12 h-1 bg-gray-200 rounded"></div>
+              <div className="flex-1">
+                <div className="flex items-center space-x-2">
+                  <Clock className="w-4 h-4 text-red-400" />
+                  <span className="text-red-400 text-sm">13h 59m to pursue passion.</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-4">
+              <div className="text-gray-500 text-sm w-12">16:00</div>
+              <div className="flex-1">
+                <button
+                  onClick={() => setCurrentView("addTask")}
+                  className="flex items-center space-x-2 bg-red-50 text-red-500 px-4 py-2 rounded-lg hover:bg-red-100 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Task</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Evening Task */}
+            {eveningTasks.length > 0 && (
+              <div className="flex items-center space-x-4">
+                <div className="text-gray-500 text-sm w-12">22:00</div>
+                <div className="flex-shrink-0">
+                  <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                    <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                      <div className="w-3 h-3 bg-white rounded-full"></div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center space-x-2 mb-1">
+                    <span className="text-sm text-gray-500">22:00 ↻</span>
+                  </div>
+                  <h3 className="font-semibold text-gray-900 text-lg">{eveningTasks[0].title}</h3>
+                </div>
+                <div className={`w-6 h-6 rounded-full border-2 ${
+                  eveningTasks[0].status === 'Completed' ? 'bg-blue-500 border-blue-500' : 'border-blue-300'
+                }`} />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Calendar View
+  if (currentView === "calendar") {
+    return (
+      <div className="min-h-screen" style={{ background: "#F0F5FB" }}>
+        <Toaster position="top-right" />
+        
+        {/* Header */}
+        <div className="px-6 pt-8 pb-4">
+          <h1 className="text-3xl font-bold text-gray-900">Calendar</h1>
+          <p className="text-gray-600">Your task schedule</p>
+        </div>
+
+        {/* Calendar */}
+        {renderCalendar()}
+
+        {/* Selected Date Tasks or Today's Schedule */}
+        {selectedDate ? renderSelectedDateTasks() : renderTodaySchedule()}
+
+        {/* Bottom Navigation */}
+        <div
+          className="fixed bottom-0 left-0 right-0 bg-white border-gray-200 m-4"
+          style={{ borderRadius: "200px" }}
+        >
+          <div className="flex justify-center items-center py-2">
+            <div className="flex items-center space-x-6">
+              <button
+                className="p-4"
+                onClick={() => setCurrentView("home")}
+              >
+                <Home className="w-6 h-6 text-gray-400" />
+              </button>
+
+              <button
+                className="bg-blue-100 p-3 rounded-xl"
+                onClick={() => setCurrentView("addTask")}
+              >
+                <Plus className="w-6 h-6 text-blue-600" />
+              </button>
+
+              <button
+                className="bg-blue-500 p-4"
+                style={{ padding: "20px 40px", borderRadius: "200px" }}
+                onClick={() => setCurrentView("calendar")}
+              >
+                <CalendarDays className="w-6 h-6 text-white" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="h-24"></div>
+      </div>
+    );
+  }
+
   if (currentView === "addTask") {
     return (
       <div className="min-h-screen bg-white">
@@ -499,26 +1015,28 @@ const setupTasksListener = () => {
           style={{ borderRadius: "200px" }}
         >
           <div className="flex justify-center items-center py-2">
-            <div className="flex items-center space-x-8">
+            <div className="flex items-center space-x-6">
               <button
-                className="\p-4"
-               
+                className="p-4"
                 onClick={() => setCurrentView("home")}
               >
-                <Home className="w-6 h-6 text-blue-500" />
+                <Home className="w-6 h-6 text-gray-400" />
               </button>
 
               <button
-                className="bg-blue-100 p-3 rounded-xl"
+                className="bg-blue-500 p-4"
                 onClick={() => setCurrentView("addTask")}
-                 style={{ padding: "20px 40px", borderRadius: "200px" }}
+                style={{ padding: "20px 40px", borderRadius: "200px" }}
               >
-                <Plus className="w-6 h-6 text-blue-600" />
+                <Plus className="w-6 h-6 text-white" />
               </button>
-{/* 
-              <button className="p-3">
-                <Menu className="w-10 h-10 text-gray-400" />
-              </button> */}
+
+              <button
+                className="p-4"
+                onClick={() => setCurrentView("calendar")}
+              >
+                <CalendarDays className="w-6 h-6 text-gray-400" />
+              </button>
             </div>
           </div>
         </div>
@@ -669,7 +1187,7 @@ const setupTasksListener = () => {
           style={{ borderRadius: "200px" }}
         >
           <div className="flex justify-center items-center py-2">
-            <div className="flex items-center space-x-8">
+            <div className="flex items-center space-x-6">
               <button
                 className="bg-blue-500 p-4"
                 style={{ padding: "20px 40px", borderRadius: "200px" }}
@@ -679,15 +1197,18 @@ const setupTasksListener = () => {
               </button>
 
               <button
-                className="bg-blue-500 p-3 rounded-xl"
+                className="p-4"
                 onClick={() => setCurrentView("addTask")}
               >
-                <Plus className="w-6 h-6 text-blue-600" />
+                <Plus className="w-6 h-6 text-gray-400" />
               </button>
 
-              {/* <button className="p-3">
-                <Menu className="w-10 h-10 text-gray-400" />
-              </button> */}
+              <button
+                className="p-4"
+                onClick={() => setCurrentView("calendar")}
+              >
+                <CalendarDays className="w-6 h-6 text-gray-400" />
+              </button>
             </div>
           </div>
         </div>
@@ -817,7 +1338,7 @@ const setupTasksListener = () => {
             style={{ borderRadius: "200px" }}
           >
             <div className="flex justify-center items-center py-2">
-              <div className="flex items-center space-x-8">
+              <div className="flex items-center space-x-6">
                 <button
                   className="bg-blue-500 p-4"
                   style={{ padding: "20px 40px", borderRadius: "200px" }}
@@ -833,9 +1354,12 @@ const setupTasksListener = () => {
                   <Plus className="w-6 h-6 text-blue-600" />
                 </button>
 
-                {/* <button className="p-3">
-                  <Menu className="w-10 h-10 text-gray-400" />
-                </button> */}
+                <button
+                  className="p-4"
+                  onClick={() => setCurrentView("calendar")}
+                >
+                  <CalendarDays className="w-6 h-6 text-gray-400" />
+                </button>
               </div>
             </div>
           </div>
