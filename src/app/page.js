@@ -560,23 +560,10 @@ const setupTasksListener = () => {
             <h3 className="text-lg font-semibold text-gray-900">
               Tasks for {dateStr}
             </h3>
-            <button
-              onClick={() => setSelectedDate(null)}
-              className="p-1 hover:bg-gray-100 rounded-full transition-colors"
-            >
-              <X className="w-5 h-5 text-gray-500" />
-            </button>
+      
           </div>
 
-          {/* Debug information */}
-          {/* <div className="mb-4 p-2 bg-gray-50 rounded text-xs text-gray-600">
-            <div>Selected: {selectedDate.toISOString()}</div>
-            <div>Total tasks: {tasks.length}</div>
-            <div>Filtered tasks: {selectedTasks.length}</div>
-            {tasks.length > 0 && (
-              <div>Sample task date: {tasks[0]?.date}</div>
-            )}
-          </div> */}
+ 
 
           {selectedTasks.length === 0 ? (
             <div className="text-center py-8">
@@ -790,30 +777,9 @@ const setupTasksListener = () => {
               </div>
             )}
 
-            {/* Time indicator */}
-            <div className="flex items-center space-x-4">
-              <div className="text-gray-500 text-sm w-12">12:00</div>
-              <div className="flex-shrink-0 w-12 h-1 bg-gray-200 rounded"></div>
-              <div className="flex-1">
-                <div className="flex items-center space-x-2">
-                  <Clock className="w-4 h-4 text-red-400" />
-                  <span className="text-red-400 text-sm">13h 59m to pursue passion.</span>
-                </div>
-              </div>
-            </div>
 
-            <div className="flex items-center space-x-4">
-              <div className="text-gray-500 text-sm w-12">16:00</div>
-              <div className="flex-1">
-                <button
-                  onClick={() => setCurrentView("addTask")}
-                  className="flex items-center space-x-2 bg-red-50 text-red-500 px-4 py-2 rounded-lg hover:bg-red-100 transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add Task</span>
-                </button>
-              </div>
-            </div>
+
+  
 
             {/* Evening Task */}
             {eveningTasks.length > 0 && (
