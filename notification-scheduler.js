@@ -45,7 +45,7 @@ function calculateNextDate(currentDate, repeatType) {
       nextDate.setMonth(nextDate.getMonth() + 1);
       break;
     default:
-      return null; // For 'never' or unknown repeat types
+      return null; 
   }
   
   return nextDate;
@@ -360,13 +360,13 @@ async function checkNotifications() {
     
     console.log(`[${getTimestamp()}] 📬 Found ${notifications.length} notification(s) ready to send`);
     
-    // Process each notification
+    
     for (let i = 0; i < notifications.length; i++) {
       const notification = notifications[i];
       const processStartTime = getTimestamp();
       console.log(`[${processStartTime}] 📤 Processing notification ${i + 1}/${notifications.length}: "${notification.title}"`);
       
-      // Create and send flex message
+     
       const flexMessage = createTaskFlexMessage(notification);
       console.log(`[${getTimestamp()}] 💬 Flex message created for notification: "${notification.title}"`);
 
@@ -379,12 +379,12 @@ async function checkNotifications() {
         const updateStartTime = getTimestamp();
         console.log(`[${updateStartTime}] 📝 Processing repeat logic for notification...`);
         
-        // Handle repeat logic
+     
         const repeatType = notification.repeat || 'Never';
         console.log(`[${getTimestamp()}] 🔄 Repeat type: ${repeatType}`);
         
         if (repeatType.toLowerCase() === 'never') {
-          // If never repeat, change status to Overdue
+         
           console.log(`[${getTimestamp()}] ⏰ Task doesn't repeat - updating status to 'Overdue'`);
           
           await notification.ref.update({
@@ -396,7 +396,7 @@ async function checkNotifications() {
           console.log(`[${getTimestamp()}] ✅ Task "${notification.title}" status updated to Overdue`);
           
         } else {
-          // If has repeat pattern, calculate next date and keep as Upcoming
+       
           const nextDate = calculateNextDate(notification.parsedDate, repeatType);
           
           if (nextDate) {
@@ -416,7 +416,7 @@ async function checkNotifications() {
           } else {
             console.log(`[${getTimestamp()}] ⚠️  Unable to calculate next date for repeat type: ${repeatType}`);
             
-            // Fallback to Overdue if can't calculate next date
+          
             await notification.ref.update({
               status: 'Overdue', 
               sentAt: admin.firestore.FieldValue.serverTimestamp(),

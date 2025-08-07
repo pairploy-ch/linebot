@@ -2,11 +2,10 @@
 const express = require("express");
 const admin = require("firebase-admin");
 const path = require("path");
-
 const app = express();
 const port = 3001;
 
-
+//ต้องมีตัว firebase-key.json
 const serviceAccountPath = require("./firebase-key.json");
 
 
@@ -199,7 +198,7 @@ async function remindLater(taskId, userId) {
 }
 
 
-// Updated handlePostback function - Always mark as Completed when Done is pressed
+//** function ที่ทำงานหลังจาก User กด Done บน flex Message// 
 async function handlePostback(event) {
   const data = event.postback?.data;
   const userId = event.source?.userId;
@@ -225,7 +224,7 @@ async function handlePostback(event) {
 
       const taskData = taskSnap.data();
 
-      // Check if user owns this task
+
       if (taskData.userId !== userId) {
         await sendReplyMessage(event.replyToken, [
           {
@@ -236,13 +235,13 @@ async function handlePostback(event) {
         return;
       }
 
-      // Always mark as Completed when Done button is pressed, regardless of repeat settings
+   
       await taskRef.update({
         status: "Completed",
         completedAt: admin.firestore.FieldValue.serverTimestamp(),
         lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
         completedFromLine: true,
-        // Set repeat to 'Never' to stop any future repetitions
+
         repeat: "Never",
         repeatStopped: true,
         repeatStoppedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -250,7 +249,7 @@ async function handlePostback(event) {
 
       console.log(`[${getTimestamp()}] ✅ Task "${taskData.title}" marked as Completed and repeat stopped`);
 
-      // Send success message
+    
       await sendReplyMessage(event.replyToken, [
         {
           type: "flex",
@@ -357,7 +356,7 @@ async function handlePostback(event) {
   }
 }
 
-// Helper functions (kept for compatibility, but not used in the new logic)
+
 function calculateNextDate(currentDate, repeatType) {
   const nextDate = new Date(currentDate);
   
@@ -372,7 +371,7 @@ function calculateNextDate(currentDate, repeatType) {
       nextDate.setMonth(nextDate.getMonth() + 1);
       break;
     default:
-      return null; // For 'never' or unknown repeat types
+      return null; 
   }
   
   return nextDate;

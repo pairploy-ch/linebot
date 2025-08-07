@@ -36,6 +36,7 @@ import { db } from "../app/firebase/config";
 export default function TaskManager() {
   const { data: session } = useSession();
   const [activeTab, setActiveTab] = useState("Upcoming");
+  const [upcomingFilter, setUpcomingFilter] = useState("All"); // เพิ่ม state สำหรับ filter
   const [currentView, setCurrentView] = useState("home");
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -54,9 +55,35 @@ export default function TaskManager() {
     status: "Upcoming",
   });
 
-  //tabs
-  const tabs = ["All", "Upcoming", "Completed", "Overdue"];
+  //สถานะทั้งหมด 
+  const tabs = ["Upcoming", "Completed", "Overdue"];
+  
+  // Filter options สำหรับ Upcoming tab
+  const upcomingFilters = ["Today", "This Week", "All"];
 
+  // function กรองวันที่ ของ tab Upcoming
+  const isToday = (date) => {
+    const today = new Date();
+    return date.toDateString() === today.toDateString();
+  };
+
+  const isThisWeek = (date) => {
+    const today = new Date();
+    const weekStart = new Date(today);
+    const weekEnd = new Date(today);
+    
+  
+    weekStart.setDate(today.getDate() - today.getDay());
+    weekStart.setHours(0, 0, 0, 0);
+    
+      
+    weekEnd.setDate(today.getDate() + (6 - today.getDay()));
+    weekEnd.setHours(23, 59, 59, 999);
+    
+    return date >= weekStart && date <= weekEnd;
+  };
+
+  //function add task
   const handleAddTask = async () => {
     if (!session?.lineUserId) {
       console.warn("No session or lineUserId");
@@ -99,7 +126,7 @@ export default function TaskManager() {
     }
   };
 
-  // Delete Modal Component
+  // Modal ยืนยันการลบ
   const DeleteModal = () => {
     if (!showDeleteModal) return null;
 
@@ -142,6 +169,7 @@ export default function TaskManager() {
     );
   };
 
+  //function delete task
   const handleDeleteTask = async (taskId) => {
     setTaskToDelete(taskId);
     setShowDeleteModal(true);
@@ -163,7 +191,7 @@ export default function TaskManager() {
   };
 
   const handleEditTask = (task) => {
-    // แปลง date format กลับเป็น input format
+
     let dateValue = "";
     let timeValue = "";
 
@@ -281,7 +309,7 @@ const fetchTasks = async () => {
   try {
     setLoading(true);
     
-    // ตรวจสอบว่ามี lineUserId และ userName
+  
     if (!session?.lineUserId || !session?.user?.name) {
       console.log("No valid session data");
       setTasks([]);
@@ -291,7 +319,7 @@ const fetchTasks = async () => {
     const q = query(
       collection(db, "tasks"),
       where("userId", "==", session.lineUserId),
-      where("userName", "==", session.user.name), // เพิ่ม filter userName ด้วย
+      where("userName", "==", session.user.name),
       orderBy("createdAt", "desc")
     );
     
@@ -323,7 +351,7 @@ const setupTasksListener = () => {
   const q = query(
     collection(db, "tasks"),
     where("userId", "==", session.lineUserId),
-    where("userName", "==", session.user.name), // เพิ่ม filter นี้
+    where("userName", "==", session.user.name),
     orderBy("createdAt", "desc")
   );
 
@@ -356,9 +384,46 @@ const setupTasksListener = () => {
     }
   }, [session?.lineUserId]);
 
+ 
   const getFilteredTasks = () => {
-    if (activeTab === "All") return tasks;
-    return tasks.filter((task) => task.status === activeTab);
+    let filteredTasks = tasks.filter((task) => task.status === activeTab);
+    
+    
+    if (activeTab === "Upcoming" && upcomingFilter !== "All") {
+      filteredTasks = filteredTasks.filter((task) => {
+        if (!task.date) return false;
+        
+        try {
+          let taskDate;
+          if (typeof task.date === "string") {
+            if (task.date.includes("at") && task.date.includes("UTC+7")) {
+              const cleanStr = task.date.replace(" at ", " ").replace(" UTC+7", "");
+              taskDate = new Date(cleanStr);
+            } else if (task.date.includes("UTC+7")) {
+              const cleanStr = task.date.replace(" UTC+7", "");
+              taskDate = new Date(cleanStr);
+            } else {
+              taskDate = new Date(task.date);
+            }
+          }
+          
+          if (isNaN(taskDate.getTime())) return false;
+          
+          if (upcomingFilter === "Today") {
+            return isToday(taskDate);
+          } else if (upcomingFilter === "This Week") {
+            return isThisWeek(taskDate);
+          }
+          
+          return true;
+        } catch (error) {
+          console.error("Error filtering task by date:", error);
+          return false;
+        }
+      });
+    }
+    
+    return filteredTasks;
   };
 
   const getStatusColor = (status) => {
@@ -419,7 +484,7 @@ const setupTasksListener = () => {
         
         if (isNaN(taskDate.getTime())) return false;
         
-        // เปรียบเทียบแบบแยก year, month, day
+     
         return taskDate.getFullYear() === targetYear &&
                taskDate.getMonth() === targetMonth &&
                taskDate.getDate() === targetDay;
@@ -452,12 +517,12 @@ const setupTasksListener = () => {
     
     const days = [];
     
-    // Add empty cells for days before the first day of the month
+   
     for (let i = 0; i < firstDay; i++) {
       days.push(<div key={`empty-${i}`} className="h-12"></div>);
     }
     
-    // Add days of the month
+   
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
       const isToday = date.toDateString() === today.toDateString();
@@ -549,9 +614,9 @@ const setupTasksListener = () => {
     });
 
     // Debug information
-    console.log("Selected Date:", selectedDate);
-    console.log("All tasks:", tasks);
-    console.log("Tasks for selected date:", selectedTasks);
+    // console.log("Selected Date:", selectedDate);
+    // console.log("All tasks:", tasks);
+    // console.log("Tasks for selected date:", selectedTasks);
 
     return (
       <div className="mx-4 mt-6">
@@ -707,7 +772,7 @@ const setupTasksListener = () => {
   };
 
   const renderTodaySchedule = () => {
-    // If a date is selected, don't show today's schedule
+
     if (selectedDate) return null;
     
     const todayTasks = getTodayTasks();
@@ -776,10 +841,6 @@ const setupTasksListener = () => {
                 }`} />
               </div>
             )}
-
-
-
-  
 
             {/* Evening Task */}
             {eveningTasks.length > 0 && (
@@ -1225,6 +1286,27 @@ const setupTasksListener = () => {
               ))}
             </div>
           </div>
+
+          {/* Filter สำหรับ Upcoming tab */}
+          {activeTab === "Upcoming" && (
+            <div className="px-6 pb-4">
+              <div className="flex space-x-1">
+                {upcomingFilters.map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => setUpcomingFilter(filter)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                      upcomingFilter === filter
+                        ? "bg-blue-100 text-blue-600 border border-blue-300"
+                        : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+                    }`}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="px-6 py-4 space-y-4">
             {loading ? (
