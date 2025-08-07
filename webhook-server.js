@@ -18,9 +18,9 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-
-const LINE_ACCESS_TOKEN =
-  "wE1+/bnCirraiwTKbLA5UvveJcCYLfulnlLy4FEU1wdk+8a5uNlc7fzYqK/mWayfFyo9EdmyiLvXLErHn+AWtS4zHib7InjUSx96viPy5FZ49S2uKktIGxZEiuQ1sx5xxLX2Wj9UWuhkbQg94XqGigdB04t89/1O/w1cDnyilFU=";
+const LINE_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+// const LINE_ACCESS_TOKEN =
+//   "wE1+/bnCirraiwTKbLA5UvveJcCYLfulnlLy4FEU1wdk+8a5uNlc7fzYqK/mWayfFyo9EdmyiLvXLErHn+AWtS4zHib7InjUSx96viPy5FZ49S2uKktIGxZEiuQ1sx5xxLX2Wj9UWuhkbQg94XqGigdB04t89/1O/w1cDnyilFU=";
 
 
 app.use((req, res, next) => {
