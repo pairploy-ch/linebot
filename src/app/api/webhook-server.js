@@ -2,25 +2,31 @@
 const express = require("express");
 const admin = require("firebase-admin");
 const path = require("path");
-
 const app = express();
 const port = 3001;
 
+require('dotenv').config();
 
-const serviceAccountPath = JSON.parse(process.env.FIREBASE_CONFIG_JSON);
+const serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG_JSON);
+
+
+serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+
+
 
 if (!admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccountPath),
-    projectId: "botyourassistant-33a1a",
+    credential: admin.credential.cert(serviceAccount),
+    projectId: serviceAccount.project_id,
   });
 }
 
+
 const db = admin.firestore();
 
-
-const LINE_ACCESS_TOKEN =
-  "wE1+/bnCirraiwTKbLA5UvveJcCYLfulnlLy4FEU1wdk+8a5uNlc7fzYqK/mWayfFyo9EdmyiLvXLErHn+AWtS4zHib7InjUSx96viPy5FZ49S2uKktIGxZEiuQ1sx5xxLX2Wj9UWuhkbQg94XqGigdB04t89/1O/w1cDnyilFU=";
+const LINE_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+// const LINE_ACCESS_TOKEN =
+//   "wE1+/bnCirraiwTKbLA5UvveJcCYLfulnlLy4FEU1wdk+8a5uNlc7fzYqK/mWayfFyo9EdmyiLvXLErHn+AWtS4zHib7InjUSx96viPy5FZ49S2uKktIGxZEiuQ1sx5xxLX2Wj9UWuhkbQg94XqGigdB04t89/1O/w1cDnyilFU=";
 
 
 app.use((req, res, next) => {
@@ -198,7 +204,7 @@ async function remindLater(taskId, userId) {
 }
 
 
-// Updated handlePostback function - Always mark as Completed when Done is pressed
+//** function ที่ทำงานหลังจาก User กด Done บน flex Message// 
 async function handlePostback(event) {
   const data = event.postback?.data;
   const userId = event.source?.userId;
@@ -224,7 +230,7 @@ async function handlePostback(event) {
 
       const taskData = taskSnap.data();
 
-      // Check if user owns this task
+
       if (taskData.userId !== userId) {
         await sendReplyMessage(event.replyToken, [
           {
@@ -235,13 +241,13 @@ async function handlePostback(event) {
         return;
       }
 
-      // Always mark as Completed when Done button is pressed, regardless of repeat settings
+   
       await taskRef.update({
         status: "Completed",
         completedAt: admin.firestore.FieldValue.serverTimestamp(),
         lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
         completedFromLine: true,
-        // Set repeat to 'Never' to stop any future repetitions
+
         repeat: "Never",
         repeatStopped: true,
         repeatStoppedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -249,7 +255,7 @@ async function handlePostback(event) {
 
       console.log(`[${getTimestamp()}] ✅ Task "${taskData.title}" marked as Completed and repeat stopped`);
 
-      // Send success message
+    
       await sendReplyMessage(event.replyToken, [
         {
           type: "flex",
@@ -356,7 +362,7 @@ async function handlePostback(event) {
   }
 }
 
-// Helper functions (kept for compatibility, but not used in the new logic)
+
 function calculateNextDate(currentDate, repeatType) {
   const nextDate = new Date(currentDate);
   
@@ -371,7 +377,7 @@ function calculateNextDate(currentDate, repeatType) {
       nextDate.setMonth(nextDate.getMonth() + 1);
       break;
     default:
-      return null; // For 'never' or unknown repeat types
+      return null; 
   }
   
   return nextDate;
