@@ -1,16 +1,28 @@
+
 const cron = require('node-cron');
 const admin = require('firebase-admin');
 const path = require('path');
 
 
-const serviceAccountPath = JSON.parse(process.env.FIREBASE_CONFIG_JSON);
+
+require('dotenv').config();
+
+const serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG_JSON);
+
+// แก้ไข private_key ให้ถูกต้อง
+serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+
+// const admin = require('firebase-admin');
 
 if (!admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccountPath),
-    projectId: "botyourassistant-33a1a"
+    credential: admin.credential.cert(serviceAccount),
+    projectId: serviceAccount.project_id,
   });
 }
+
+// ... โค้ดส่วนที่เหลือต่อไป
+
 
 const db = admin.firestore();
 
