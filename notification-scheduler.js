@@ -9,10 +9,10 @@ require('dotenv').config();
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG_JSON);
 
-// แก้ไข private_key ให้ถูกต้อง
+
 serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
 
-// const admin = require('firebase-admin');
+
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -21,13 +21,12 @@ if (!admin.apps.length) {
   });
 }
 
-// ... โค้ดส่วนที่เหลือต่อไป
 
 
 const db = admin.firestore();
 
 
-const LINE_ACCESS_TOKEN = 'B4rIu/T52erQu0RQ8YBqnO0020L3Bd4fSqTu8OYiHSTxnuJ5wpPXbtBTqcaFEZgIFyo9EdmyiLvXLErHn+AWtS4zHib7InjUSx96viPy5FYLaFQaTOofp778ZpULSLaVmhnLybtAVMBb+mNuwrrzuAdB04t89/1O/w1cDnyilFU=';
+const LINE_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 
 
 function getTimestamp() {

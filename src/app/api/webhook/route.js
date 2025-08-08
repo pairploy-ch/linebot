@@ -2,12 +2,17 @@ import admin from "firebase-admin";
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG_JSON);
 
+serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+
+
+
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    projectId: "botyourassistant-33a1a",
+    projectId: serviceAccount.project_id,
   });
 }
+
 
 const db = admin.firestore();
 

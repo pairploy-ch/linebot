@@ -5,16 +5,22 @@ const path = require("path");
 const app = express();
 const port = 3001;
 
-//ต้องมีตัว firebase-key.json
-const serviceAccountPath = require("./firebase-key.json");
+require('dotenv').config();
+
+const serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG_JSON);
+
+
+serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+
 
 
 if (!admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccountPath),
-    projectId: "botyourassistant-33a1a",
+    credential: admin.credential.cert(serviceAccount),
+    projectId: serviceAccount.project_id,
   });
 }
+
 
 const db = admin.firestore();
 
