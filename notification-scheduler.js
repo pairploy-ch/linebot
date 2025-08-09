@@ -20,12 +20,10 @@ const LINE_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 
 
 function getCurrentThaiTime() {
-
-  const utcNow = moment.utc();
-  const thaiNow = utcNow.clone().utcOffset('+07:00');
+  const thaiNow = moment.tz('Asia/Bangkok');
   
-  console.log(`[DEBUG] UTC now: ${utcNow.format('YYYY-MM-DD HH:mm:ss')} UTC`);
-  console.log(`[DEBUG] Thai now: ${thaiNow.format('YYYY-MM-DD HH:mm:ss')} +7`);
+  console.log(`[DEBUG] Thai now: ${thaiNow.format('YYYY-MM-DD HH:mm:ss')} (Asia/Bangkok)`);
+  console.log(`[DEBUG] UTC equivalent: ${thaiNow.clone().utc().format('YYYY-MM-DD HH:mm:ss')} UTC`);
   
   return thaiNow;
 }
@@ -36,7 +34,8 @@ function getTimestamp() {
 }
 
 function calculateNextDate(currentDate, repeatType) {
-  const currentMoment = moment(currentDate).utcOffset('+07:00');
+
+  const currentMoment = moment.tz(currentDate, 'Asia/Bangkok');
   
   switch (repeatType.toLowerCase()) {
     case 'daily':
@@ -56,10 +55,10 @@ function calculateNextDate(currentDate, repeatType) {
 }
 
 function formatDateForFirestore(date) {
-  const thaiMoment = moment(date).utcOffset('+07:00');
-  return thaiMoment.format('MMMM D, YYYY [at] h:mm:ss A [UTC+7]');
+ 
+  const thaiMoment = moment.tz(date, 'Asia/Bangkok');
+  return admin.firestore.Timestamp.fromDate(thaiMoment.toDate());
 }
-
 
 function parseFirebaseDate(dateValue) {
   try {
@@ -69,20 +68,18 @@ function parseFirebaseDate(dateValue) {
 
     console.log(`[DEBUG] Parsing date: "${dateValue}" (type: ${typeof dateValue})`);
 
-   
+  
     if (dateValue.toDate && typeof dateValue.toDate === 'function') {
       const jsDate = dateValue.toDate();
-     
-      const utcMoment = moment.utc(jsDate);
-      const thaiMoment = utcMoment.clone().utcOffset('+07:00');
-      console.log(`[DEBUG] Firestore timestamp -> Thai: ${thaiMoment.format('YYYY-MM-DD HH:mm:ss')} +7`);
+      
+      const thaiMoment = moment.tz(jsDate, 'Asia/Bangkok');
+      console.log(`[DEBUG] Firestore timestamp -> Thai: ${thaiMoment.format('YYYY-MM-DD HH:mm:ss')} (Asia/Bangkok)`);
       return thaiMoment;
     }
 
-
+ 
     let dateStr = dateValue.toString();
     
-
     if (dateStr.includes(' at ') && dateStr.includes('UTC+7')) {
       const parts = dateStr.split(' at ');
       const datePart = parts[0];
@@ -90,23 +87,20 @@ function parseFirebaseDate(dateValue) {
       
       console.log(`[DEBUG] Parsing Thai format: "${datePart} ${timePart}"`);
       
-     
-      const parsedMoment = moment(`${datePart} ${timePart}`, 'MMMM D, YYYY h:mm:ss A');
+      
+      const parsedMoment = moment.tz(`${datePart} ${timePart}`, 'MMMM D, YYYY h:mm:ss A', 'Asia/Bangkok');
       
       if (parsedMoment.isValid()) {
-
-        const thaiMoment = parsedMoment.utcOffset('+07:00');
-        console.log(`[DEBUG] Parsed Thai time: ${thaiMoment.format('YYYY-MM-DD HH:mm:ss')} +7`);
-        return thaiMoment;
+        console.log(`[DEBUG] Parsed Thai time: ${parsedMoment.format('YYYY-MM-DD HH:mm:ss')} (Asia/Bangkok)`);
+        return parsedMoment;
       }
     }
 
-
-    const parsedMoment = moment(dateStr);
+   
+    const parsedMoment = moment.tz(dateStr, 'Asia/Bangkok');
     if (parsedMoment.isValid()) {
-      const thaiMoment = parsedMoment.utcOffset('+07:00');
-      console.log(`[DEBUG] Parsed as Thai: ${thaiMoment.format('YYYY-MM-DD HH:mm:ss')} +7`);
-      return thaiMoment;
+      console.log(`[DEBUG] Parsed as Thai: ${parsedMoment.format('YYYY-MM-DD HH:mm:ss')} (Asia/Bangkok)`);
+      return parsedMoment;
     }
 
     return null;
@@ -287,11 +281,11 @@ async function checkNotifications() {
   console.log(`[${startTime}] 🔍 Starting notification check process...`);
   
   try {
- 
     const now = getCurrentThaiTime();
     console.log(`[${getTimestamp()}] 📊 Current time check:`);
-    console.log(`[${getTimestamp()}]    📍 Thai time: ${now.format('DD/MM/YYYY HH:mm:ss')}`);
+    console.log(`[${getTimestamp()}]    📍 Thai time: ${now.format('DD/MM/YYYY HH:mm:ss')} (Asia/Bangkok)`);
     console.log(`[${getTimestamp()}]    📍 Unix timestamp: ${now.unix()}`);
+    console.log(`[${getTimestamp()}]    📍 UTC equivalent: ${now.clone().utc().format('DD/MM/YYYY HH:mm:ss')} UTC`);
     
     const notificationsRef = db.collection('tasks');
     console.log(`[${getTimestamp()}] 🔗 Connected to Firestore collection: tasks`);
@@ -327,17 +321,18 @@ async function checkNotifications() {
       
       if (parsedMoment && parsedMoment.isValid()) {
         const dateString = parsedMoment.format('DD/MM/YYYY HH:mm:ss');
-        console.log(`[${getTimestamp()}] ✅ Parsed date successfully: ${dateString}`);
+        console.log(`[${getTimestamp()}] ✅ Parsed date successfully: ${dateString} (Asia/Bangkok)`);
         
         console.log(`[${getTimestamp()}] 📅 Checking notification: "${data.title}" scheduled for ${dateString}`);
-        console.log(`[${getTimestamp()}] ⏰ Comparing times:`);
-        console.log(`[${getTimestamp()}]    📍 Current: ${now.format('DD/MM/YYYY HH:mm:ss')} (Thai time: ${now.format('YYYY-MM-DD HH:mm:ss')} +7)`);
-        console.log(`[${getTimestamp()}]    🎯 Target:  ${parsedMoment.format('DD/MM/YYYY HH:mm:ss')} (Thai time: ${parsedMoment.format('YYYY-MM-DD HH:mm:ss')} +7)`);
+        console.log(`[${getTimestamp()}] ⏰ Comparing times (both in Asia/Bangkok timezone):`);
+        console.log(`[${getTimestamp()}]    📍 Current: ${now.format('DD/MM/YYYY HH:mm:ss')}`);
+        console.log(`[${getTimestamp()}]    🎯 Target:  ${parsedMoment.format('DD/MM/YYYY HH:mm:ss')}`);
         
+     
         const diffSeconds = parsedMoment.diff(now, 'seconds');
         console.log(`[${getTimestamp()}]    ⏱️  Difference: ${diffSeconds} seconds`);
         
-   
+    
         if (now.isSameOrAfter(parsedMoment) || Math.abs(diffSeconds) <= 60) {
           console.log(`[${getTimestamp()}] ✅ Notification "${data.title}" is ready to send!`);
           notifications.push({
@@ -401,11 +396,11 @@ async function checkNotifications() {
           const nextDate = calculateNextDate(notification.parsedMoment.toDate(), repeatType);
           
           if (nextDate) {
-            const formattedNextDate = formatDateForFirestore(nextDate);
-            console.log(`[${getTimestamp()}] 📅 Next occurrence calculated: ${formattedNextDate}`);
+            const nextTimestamp = formatDateForFirestore(nextDate);
+            console.log(`[${getTimestamp()}] 📅 Next occurrence calculated: ${moment.tz(nextDate, 'Asia/Bangkok').format('DD/MM/YYYY HH:mm:ss')} (Asia/Bangkok)`);
             
             await notification.ref.update({
-              date: formattedNextDate,
+              date: nextTimestamp, // ใช้ Firestore Timestamp
               status: 'Upcoming',
               lastSentAt: admin.firestore.FieldValue.serverTimestamp(),
               notificationSent: true,
