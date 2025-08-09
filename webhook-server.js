@@ -3,7 +3,7 @@ const express = require("express");
 const admin = require("firebase-admin");
 const path = require("path");
 const app = express();
-const port = 3001;
+const port = process.env.PORT || 3001;
 
 require('dotenv').config();
 
