@@ -59,32 +59,43 @@ function parseFirebaseDate(dateValue) {
       return null;
     }
 
-   
+
     if (dateValue.toDate && typeof dateValue.toDate === 'function') {
+    
       return moment(dateValue.toDate()).tz('Asia/Bangkok');
     }
 
-   
+  
     let dateStr = dateValue.toString();
     
-  
+ 
     if (dateStr.includes(' at ') && dateStr.includes('UTC+7')) {
       const parts = dateStr.split(' at ');
       const datePart = parts[0];
       const timePart = parts[1].replace(' UTC+7', '');
       
-    
-      const momentDate = moment(`${datePart} ${timePart}`, 'MMMM D, YYYY h:mm:ss A').tz('Asia/Bangkok');
+ 
+      const momentDate = moment.tz(`${datePart} ${timePart}`, 'MMMM D, YYYY h:mm:ss A', 'Asia/Bangkok');
       
       if (momentDate.isValid()) {
+        console.log(`[${getTimestamp()}] 🔧 Parsed with explicit timezone: ${momentDate.format('DD/MM/YYYY HH:mm:ss')} Thai time`);
         return momentDate;
       }
     }
 
-   
-    const momentDate = moment(dateStr).tz('Asia/Bangkok');
+ 
+    const momentDate = moment.tz(dateStr, 'Asia/Bangkok');
     if (momentDate.isValid()) {
+      console.log(`[${getTimestamp()}] 🔧 Parsed as Thai timezone: ${momentDate.format('DD/MM/YYYY HH:mm:ss')} Thai time`);
       return momentDate;
+    }
+
+  
+    const utcMoment = moment.utc(dateStr);
+    if (utcMoment.isValid()) {
+      const thaiMoment = utcMoment.tz('Asia/Bangkok');
+      console.log(`[${getTimestamp()}] 🔧 Converted from UTC to Thai: ${thaiMoment.format('DD/MM/YYYY HH:mm:ss')} Thai time`);
+      return thaiMoment;
     }
 
     return null;
@@ -265,9 +276,9 @@ async function checkNotifications() {
   console.log(`[${startTime}] 🔍 Starting notification check process...`);
   
   try {
-   
+ 
     const now = getCurrentThaiTime();
-    console.log(`[${getTimestamp()}] 📊 Current time (Thailand): ${now.format('DD/MM/YYYY HH:mm:ss')} (${now.toISOString()})`);
+    console.log(`[${getTimestamp()}] 📊 Current time (Thailand): ${now.format('DD/MM/YYYY HH:mm:ss')} (UTC: ${moment().utc().format('YYYY-MM-DD HH:mm:ss')}Z)`);
     
     const notificationsRef = db.collection('tasks');
     console.log(`[${getTimestamp()}] 🔗 Connected to Firestore collection: tasks`);
@@ -307,13 +318,13 @@ async function checkNotifications() {
         
         console.log(`[${getTimestamp()}] 📅 Checking notification: "${data.title}" scheduled for ${dateString}`);
         console.log(`[${getTimestamp()}] ⏰ Comparing times:`);
-        console.log(`[${getTimestamp()}]    📍 Current: ${now.format('DD/MM/YYYY HH:mm:ss')} (${now.toISOString()})`);
-        console.log(`[${getTimestamp()}]    🎯 Target:  ${parsedMoment.format('DD/MM/YYYY HH:mm:ss')} (${parsedMoment.toISOString()})`);
+        console.log(`[${getTimestamp()}]    📍 Current: ${now.format('DD/MM/YYYY HH:mm:ss')} (Thai time: ${now.format('YYYY-MM-DD HH:mm:ss')} +7)`);
+        console.log(`[${getTimestamp()}]    🎯 Target:  ${parsedMoment.format('DD/MM/YYYY HH:mm:ss')} (Thai time: ${parsedMoment.format('YYYY-MM-DD HH:mm:ss')} +7)`);
         
         const diffSeconds = parsedMoment.diff(now, 'seconds');
         console.log(`[${getTimestamp()}]    ⏱️  Difference: ${diffSeconds} seconds`);
         
-       
+     
         if (now.isSameOrAfter(parsedMoment) || Math.abs(diffSeconds) <= 60) {
           console.log(`[${getTimestamp()}] ✅ Notification "${data.title}" is ready to send!`);
           notifications.push({
