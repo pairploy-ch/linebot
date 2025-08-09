@@ -408,12 +408,12 @@ async function handleMessage(event) {
   );
 
  
-  const replyMessage = {
-    type: "text",
-    text: `ได้รับข้อความ: ${messageText} 🤖\n\nใช้งานผ่านเว็บแอป: https://your-domain.com`,
-  };
+  // const replyMessage = {
+  //   type: "text",
+  //   text: `ได้รับข้อความ: ${messageText} 🤖\n\nใช้งานผ่านเว็บแอป: https://your-domain.com`,
+  // };
 
-  await sendReplyMessage(event.replyToken, [replyMessage]);
+  await sendReplyMessage(event.replyToken);
 }
 
 
