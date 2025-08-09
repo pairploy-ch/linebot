@@ -1,18 +1,12 @@
-
 const cron = require('node-cron');
 const admin = require('firebase-admin');
 const path = require('path');
-
-
+const moment = require('moment-timezone');
 
 require('dotenv').config();
 
 const serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG_JSON);
-
-
 serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-
-
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -21,69 +15,89 @@ if (!admin.apps.length) {
   });
 }
 
-
-
 const db = admin.firestore();
-
-
 const LINE_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 
 
-function getTimestamp() {
-  return new Date().toLocaleString('th-TH', {
-    timeZone: 'Asia/Bangkok',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  });
+function getCurrentThaiTime() {
+  return moment().tz('Asia/Bangkok');
 }
 
+function getTimestamp() {
+  return getCurrentThaiTime().format('DD/MM/YYYY HH:mm:ss');
+}
 
 function calculateNextDate(currentDate, repeatType) {
-  const nextDate = new Date(currentDate);
+  const nextMoment = moment(currentDate).tz('Asia/Bangkok');
   
   switch (repeatType.toLowerCase()) {
     case 'daily':
-      nextDate.setDate(nextDate.getDate() + 1);
+      nextMoment.add(1, 'day');
       break;
     case 'weekly':
-      nextDate.setDate(nextDate.getDate() + 7);
+      nextMoment.add(1, 'week');
       break;
     case 'monthly':
-      nextDate.setMonth(nextDate.getMonth() + 1);
+      nextMoment.add(1, 'month');
       break;
     default:
-      return null; 
+      return null;
   }
   
-  return nextDate;
+  return nextMoment.toDate();
 }
-
 
 function formatDateForFirestore(date) {
-  const options = {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "numeric",
-    minute: "numeric",
-    second: "2-digit",
-    hour12: true,
-    timeZone: "Asia/Bangkok",
-  };
-
-  const formatted = date.toLocaleDateString("en-US", options);
-  return `${formatted} UTC+7`;
+  const momentDate = moment(date).tz('Asia/Bangkok');
+  return momentDate.format('MMMM D, YYYY [at] h:mm:ss A [UTC+7]');
 }
 
 
+function parseFirebaseDate(dateValue) {
+  try {
+    if (!dateValue) {
+      return null;
+    }
+
+   
+    if (dateValue.toDate && typeof dateValue.toDate === 'function') {
+      return moment(dateValue.toDate()).tz('Asia/Bangkok');
+    }
+
+   
+    let dateStr = dateValue.toString();
+    
+  
+    if (dateStr.includes(' at ') && dateStr.includes('UTC+7')) {
+      const parts = dateStr.split(' at ');
+      const datePart = parts[0];
+      const timePart = parts[1].replace(' UTC+7', '');
+      
+    
+      const momentDate = moment(`${datePart} ${timePart}`, 'MMMM D, YYYY h:mm:ss A').tz('Asia/Bangkok');
+      
+      if (momentDate.isValid()) {
+        return momentDate;
+      }
+    }
+
+   
+    const momentDate = moment(dateStr).tz('Asia/Bangkok');
+    if (momentDate.isValid()) {
+      return momentDate;
+    }
+
+    return null;
+  } catch (error) {
+    console.log(`[${getTimestamp()}] ❌ Error parsing date:`, error);
+    return null;
+  }
+}
+
 function createTaskFlexMessage(task) {
-  const messageDate = task.parsedDate || new Date(task.date);
-  const dateDisplay = messageDate && !isNaN(messageDate.getTime()) 
-    ? messageDate.toLocaleString('th-TH')
+  const messageDate = task.parsedMoment || getCurrentThaiTime();
+  const dateDisplay = messageDate.isValid() 
+    ? messageDate.format('DD/MM/YYYY HH:mm น.')
     : 'ไม่ระบุเวลา';
 
   return {
@@ -210,8 +224,6 @@ function createTaskFlexMessage(task) {
   };
 }
 
-
-
 async function sendLineMessage(userId, message) {
   const timestamp = getTimestamp();
   console.log(`[${timestamp}] 📤 Attempting to send flex message to user: ${userId}`);
@@ -248,14 +260,14 @@ async function sendLineMessage(userId, message) {
   }
 }
 
-
 async function checkNotifications() {
   const startTime = getTimestamp();
   console.log(`[${startTime}] 🔍 Starting notification check process...`);
   
   try {
-    const now = new Date();
-    console.log(`[${getTimestamp()}] 📊 Current time: ${now.toLocaleString('th-TH')}`);
+   
+    const now = getCurrentThaiTime();
+    console.log(`[${getTimestamp()}] 📊 Current time (Thailand): ${now.format('DD/MM/YYYY HH:mm:ss')} (${now.toISOString()})`);
     
     const notificationsRef = db.collection('tasks');
     console.log(`[${getTimestamp()}] 🔗 Connected to Firestore collection: tasks`);
@@ -285,79 +297,38 @@ async function checkNotifications() {
     snapshot.forEach(doc => {
       const data = doc.data();
       
-      let notificationDate;
-      let dateString = 'Invalid Date';
-      let isValidDate = false;
+      console.log(`[${getTimestamp()}] 🔍 Raw date value: "${data.date}" (type: ${typeof data.date})`);
       
-      try {
-        if (data.date) {
-          console.log(`[${getTimestamp()}] 🔍 Raw date value: "${data.date}" (type: ${typeof data.date})`);
-          
-          if (data.date.toDate && typeof data.date.toDate === 'function') {
-            notificationDate = data.date.toDate();
-            isValidDate = true;
-            dateString = notificationDate.toLocaleString('th-TH');
-            console.log(`[${getTimestamp()}] ✅ Parsed Firestore Timestamp successfully: ${dateString}`);
-          } else {
-            let tempDate = new Date(data.date);
-            
-            if (isNaN(tempDate.getTime())) {
-              const dateStr = data.date.toString();
-              
-              if (dateStr.includes(' at ') && dateStr.includes('UTC+7')) {
-                const parts = dateStr.split(' at ');
-                const datePart = parts[0];
-                const timePart = parts[1].replace(' UTC+7', '');
-                const standardFormat = `${datePart} ${timePart}`;
-                
-                console.log(`[${getTimestamp()}] 🔄 Trying to parse: "${standardFormat}"`);
-                tempDate = new Date(standardFormat);
-              }
-            }
-            
-            if (!isNaN(tempDate.getTime())) {
-              notificationDate = tempDate;
-              isValidDate = true;
-              dateString = notificationDate.toLocaleString('th-TH');
-              console.log(`[${getTimestamp()}] ✅ Parsed date string successfully: ${dateString}`);
-            } else {
-              console.log(`[${getTimestamp()}] ❌ Failed to parse date string: ${data.date}`);
-              dateString = `Invalid Date (${data.date})`;
-            }
-          }
-        } else {
-          console.log(`[${getTimestamp()}] ⚠️  No date field found for "${data.title}"`);
-          dateString = 'No Date';
-        }
-      } catch (error) {
-        console.log(`[${getTimestamp()}] ❌ Error parsing date for "${data.title}":`, error);
-        dateString = `Error parsing date (${data.date})`;
-      }
+      const parsedMoment = parseFirebaseDate(data.date);
       
-      console.log(`[${getTimestamp()}] 📅 Checking notification: "${data.title}" scheduled for ${dateString}`);
-      
-      if (isValidDate && notificationDate) {
-        console.log(`[${getTimestamp()}] ⏰ Comparing times:`);
-        console.log(`[${getTimestamp()}]    📍 Current: ${now.toLocaleString('th-TH')} (${now.toISOString()})`);
-        console.log(`[${getTimestamp()}]    🎯 Target:  ${notificationDate.toLocaleString('th-TH')} (${notificationDate.toISOString()})`);
-        console.log(`[${getTimestamp()}]    ⏱️  Difference: ${Math.round((notificationDate - now) / 1000)} seconds`);
+      if (parsedMoment && parsedMoment.isValid()) {
+        const dateString = parsedMoment.format('DD/MM/YYYY HH:mm:ss');
+        console.log(`[${getTimestamp()}] ✅ Parsed date successfully: ${dateString}`);
         
-        if (notificationDate <= now) {
+        console.log(`[${getTimestamp()}] 📅 Checking notification: "${data.title}" scheduled for ${dateString}`);
+        console.log(`[${getTimestamp()}] ⏰ Comparing times:`);
+        console.log(`[${getTimestamp()}]    📍 Current: ${now.format('DD/MM/YYYY HH:mm:ss')} (${now.toISOString()})`);
+        console.log(`[${getTimestamp()}]    🎯 Target:  ${parsedMoment.format('DD/MM/YYYY HH:mm:ss')} (${parsedMoment.toISOString()})`);
+        
+        const diffSeconds = parsedMoment.diff(now, 'seconds');
+        console.log(`[${getTimestamp()}]    ⏱️  Difference: ${diffSeconds} seconds`);
+        
+       
+        if (now.isSameOrAfter(parsedMoment) || Math.abs(diffSeconds) <= 60) {
           console.log(`[${getTimestamp()}] ✅ Notification "${data.title}" is ready to send!`);
           notifications.push({
             id: doc.id,
             ref: doc.ref,
             ...data,
-            parsedDate: notificationDate
+            parsedMoment: parsedMoment
           });
         } else {
-          const minutesRemaining = Math.ceil((notificationDate - now) / 1000 / 60);
-          const secondsRemaining = Math.ceil((notificationDate - now) / 1000);
+          const minutesRemaining = Math.ceil(diffSeconds / 60);
           console.log(`[${getTimestamp()}] ⏳ Notification "${data.title}" not yet ready`);
-          console.log(`[${getTimestamp()}]    ⏰ Time remaining: ${minutesRemaining} minutes (${secondsRemaining} seconds)`);
+          console.log(`[${getTimestamp()}]    ⏰ Time remaining: ${minutesRemaining} minutes (${diffSeconds} seconds)`);
         }
       } else {
-        console.log(`[${getTimestamp()}] ⚠️  Skipping notification "${data.title}" due to invalid date`);
+        console.log(`[${getTimestamp()}] ⚠️  Skipping notification "${data.title}" due to invalid date: ${data.date}`);
       }
     });
     
@@ -371,13 +342,11 @@ async function checkNotifications() {
     
     console.log(`[${getTimestamp()}] 📬 Found ${notifications.length} notification(s) ready to send`);
     
-    
     for (let i = 0; i < notifications.length; i++) {
       const notification = notifications[i];
       const processStartTime = getTimestamp();
       console.log(`[${processStartTime}] 📤 Processing notification ${i + 1}/${notifications.length}: "${notification.title}"`);
       
-     
       const flexMessage = createTaskFlexMessage(notification);
       console.log(`[${getTimestamp()}] 💬 Flex message created for notification: "${notification.title}"`);
 
@@ -390,12 +359,10 @@ async function checkNotifications() {
         const updateStartTime = getTimestamp();
         console.log(`[${updateStartTime}] 📝 Processing repeat logic for notification...`);
         
-     
         const repeatType = notification.repeat || 'Never';
         console.log(`[${getTimestamp()}] 🔄 Repeat type: ${repeatType}`);
         
         if (repeatType.toLowerCase() === 'never') {
-         
           console.log(`[${getTimestamp()}] ⏰ Task doesn't repeat - updating status to 'Overdue'`);
           
           await notification.ref.update({
@@ -407,8 +374,7 @@ async function checkNotifications() {
           console.log(`[${getTimestamp()}] ✅ Task "${notification.title}" status updated to Overdue`);
           
         } else {
-       
-          const nextDate = calculateNextDate(notification.parsedDate, repeatType);
+          const nextDate = calculateNextDate(notification.parsedMoment.toDate(), repeatType);
           
           if (nextDate) {
             const formattedNextDate = formatDateForFirestore(nextDate);
@@ -427,7 +393,6 @@ async function checkNotifications() {
           } else {
             console.log(`[${getTimestamp()}] ⚠️  Unable to calculate next date for repeat type: ${repeatType}`);
             
-          
             await notification.ref.update({
               status: 'Overdue', 
               sentAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -457,7 +422,6 @@ async function checkNotifications() {
     console.error(`[${errorTime}] ❌ Error in checkNotifications:`, error);
   }
 }
-
 
 const startupTime = getTimestamp();
 console.log(`[${startupTime}] ⏰ Starting notification scheduler...`);
