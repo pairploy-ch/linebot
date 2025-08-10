@@ -407,13 +407,13 @@ async function handleMessage(event) {
     `[${getTimestamp()}] 💬 Text message received: "${messageText}" from user: ${userId}`
   );
 
- 
-  // const replyMessage = {
-  //   type: "text",
-  //   text: `ได้รับข้อความ: ${messageText} 🤖\n\nใช้งานผ่านเว็บแอป: https://your-domain.com`,
-  // };
+  const replyMessage = {
+    type: "text",
+    text: `ได้รับข้อความ: ${messageText} 🤖\n\nใช้งานผ่านเว็บแอป: https://your-domain.com`,
+  };
 
-  await sendReplyMessage(event.replyToken);
+  // Corrected line: Pass the replyMessage object inside an array
+  await sendReplyMessage(event.replyToken, [replyMessage]);
 }
 
 
