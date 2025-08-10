@@ -1544,6 +1544,7 @@ import {
   orderBy,
   onSnapshot,
   Timestamp,
+  writeBatch
 } from "firebase/firestore";
 import { db } from "../app/firebase/config";
 
@@ -1567,7 +1568,7 @@ export default function TaskManager() {
     date: "",
     time: "",
     repeat: "Never",
-    endDate: "", // ADDED: New state for the end date
+    endDate: "",
     color: "blue",
     status: "Upcoming",
   });
@@ -1604,11 +1605,11 @@ export default function TaskManager() {
     if (repeat === "Never") {
       return [moment.tz(`${startDate}T${time}`, "Asia/Bangkok").toDate()];
     }
-  
+
     const dates = [];
     let currentDate = moment.tz(`${startDate}T${time}`, "Asia/Bangkok");
-    const end = moment.tz(`${endDate}T23:59:59`, "Asia/Bangkok"); // End of the day
-  
+    const end = moment.tz(`${endDate}T23:59:59`, "Asia/Bangkok");
+
     while (currentDate.isSameOrBefore(end)) {
       dates.push(currentDate.toDate());
       switch (repeat) {
@@ -1625,7 +1626,7 @@ export default function TaskManager() {
           break;
       }
     }
-  
+
     return dates;
   };
 
@@ -1649,7 +1650,7 @@ export default function TaskManager() {
         detail: newTask.detail,
         repeatType: newTask.repeat,
         startDate: newTask.date,
-        endDate: newTask.endDate, 
+        endDate: newTask.endDate,
         userId: session.lineUserId,
         userName: session.user.name,
         createdAt: Timestamp.now(),
@@ -1737,8 +1738,8 @@ export default function TaskManager() {
   };
 
   //function delete task
-  const handleDeleteTask = async (taskId) => {
-    setTaskToDelete(taskId);
+  const handleDeleteTask = async (taskToDeleteId) => {
+    setTaskToDelete(taskToDeleteId);
     setShowDeleteModal(true);
   };
 
@@ -1746,7 +1747,23 @@ export default function TaskManager() {
     if (!taskToDelete) return;
 
     try {
-      await deleteDoc(doc(db, "tasks", taskToDelete));
+      // Find the parent task document
+      const parentTaskRef = doc(db, "tasks", taskToDelete);
+      
+      // Get the subcollection documents
+      const subcollectionSnapshot = await getDocs(collection(parentTaskRef, "notifications"));
+
+      // Use a batch to delete all documents at once
+      const batch = writeBatch(db);
+      subcollectionSnapshot.docs.forEach(subDoc => {
+        batch.delete(subDoc.ref);
+      });
+      
+      // Delete the parent document
+      batch.delete(parentTaskRef);
+
+      await batch.commit();
+      
       toast.success("ลบ task สำเร็จแล้ว!");
     } catch (error) {
       console.error("ลบ task ล้มเหลว:", error);
@@ -1756,37 +1773,17 @@ export default function TaskManager() {
       setTaskToDelete(null);
     }
   };
-
+  
   const handleEditTask = (task) => {
-
+    // You'll need to fetch the parent task to get repeat information, then edit the specific notification
+    // For now, let's keep it simple by just editing the one notification
     let dateValue = "";
     let timeValue = "";
-    let endDateValue = "";
 
-    if (task.date) {
-      try {
-        let date;
-        if (typeof task.date === "string") {
-          if (task.date.includes("at") && task.date.includes("UTC+7")) {
-            const cleanStr = task.date
-              .replace(" at ", " ")
-              .replace(" UTC+7", "");
-            date = new Date(cleanStr);
-          } else if (task.date.includes("UTC+7")) {
-            const cleanStr = task.date.replace(" UTC+7", "");
-            date = new Date(cleanStr);
-          } else {
-            date = new Date(task.date);
-          }
-        }
-
-        if (!isNaN(date.getTime())) {
-          dateValue = date.toISOString().split("T")[0];
-          timeValue = date.toTimeString().slice(0, 5);
-        }
-      } catch (error) {
-        console.error("Error parsing date for edit:", error);
-      }
+    if (task.notificationTime) {
+      const date = task.notificationTime.toDate();
+      dateValue = date.toISOString().split("T")[0];
+      timeValue = date.toTimeString().slice(0, 5);
     }
 
     setEditingTask({
@@ -1802,19 +1799,25 @@ export default function TaskManager() {
       toast.error("กรุณาใส่ชื่อ task");
       return;
     }
-
+  
     try {
-      const taskRef = doc(db, "tasks", editingTask.id);
-      const updatedTask = {
+      const parentTaskRef = doc(db, "tasks", editingTask.parentId);
+      const notificationRef = doc(db, "tasks", editingTask.parentId, "notifications", editingTask.id);
+  
+      // Update the parent task with the new title/detail (if needed)
+      await updateDoc(parentTaskRef, {
         title: editingTask.title,
         detail: editingTask.detail,
-        repeat: editingTask.repeat,
-        status: editingTask.status,
-        date: formatDateTime(editingTask.date, editingTask.time),
         updatedAt: Timestamp.now(),
+      });
+  
+      // Update the specific notification
+      const updatedNotification = {
+        notificationTime: Timestamp.fromDate(new Date(`${editingTask.date}T${editingTask.time}`)),
+        status: editingTask.status,
       };
-
-      await updateDoc(taskRef, updatedTask);
+      await updateDoc(notificationRef, updatedNotification);
+  
       setCurrentView("home");
       setEditingTask(null);
       toast.success("อัพเดท task สำเร็จแล้ว!");
@@ -1823,26 +1826,20 @@ export default function TaskManager() {
       toast.error("อัพเดท task ล้มเหลว");
     }
   };
-
+  
   const formatDate = (dateValue, options = {}) => {
     if (!dateValue) return "No date";
-
+  
     let date;
+    if (dateValue instanceof Timestamp) {
+      date = dateValue.toDate();
+    } else {
+      date = new Date(dateValue);
+    }
+  
     try {
-      if (typeof dateValue === "string") {
-        if (dateValue.includes("at") && dateValue.includes("UTC+7")) {
-          const cleanStr = dateValue.replace(" at ", " ").replace(" UTC+7", "");
-          date = new Date(cleanStr);
-        } else if (dateValue.includes("UTC+7")) {
-          const cleanStr = dateValue.replace(" UTC+7", "");
-          date = new Date(cleanStr);
-        } else {
-          date = new Date(dateValue);
-        }
-      }
-
       if (isNaN(date.getTime())) return "Invalid Date";
-
+  
       return date.toLocaleString("th-TH", {
         dateStyle: "medium",
         timeStyle: "short",
@@ -1852,12 +1849,12 @@ export default function TaskManager() {
       return "Invalid Date";
     }
   };
-
+  
   const formatDateTime = (date, time) => {
     if (!date || !time) return "";
-
+  
     const dateTime = new Date(`${date}T${time}`);
-
+  
     const options = {
       year: "numeric",
       month: "long",
@@ -1868,39 +1865,50 @@ export default function TaskManager() {
       hour12: true,
       timeZone: "Asia/Bangkok",
     };
-
+  
     const formatted = dateTime.toLocaleDateString("en-US", options);
     return `${formatted} UTC+7`;
   };
-
+  
   const fetchTasks = async () => {
     try {
       setLoading(true);
-
-
       if (!session?.lineUserId || !session?.user?.name) {
         console.log("No valid session data");
         setTasks([]);
         return;
       }
-
-      const q = query(
+  
+      const tasksData = [];
+      const parentQuery = query(
         collection(db, "tasks"),
         where("userId", "==", session.lineUserId),
-        where("userName", "==", session.user.name),
         orderBy("createdAt", "desc")
       );
-
-      const querySnapshot = await getDocs(q);
-      const tasksData = [];
-
-      querySnapshot.forEach((doc) => {
-        tasksData.push({
-          id: doc.id,
-          ...doc.data(),
+  
+      const parentSnapshot = await getDocs(parentQuery);
+  
+      for (const parentDoc of parentSnapshot.docs) {
+        const parentData = parentDoc.data();
+        const notificationsQuery = collection(parentDoc.ref, "notifications");
+        const notificationsSnapshot = await getDocs(notificationsQuery);
+  
+        notificationsSnapshot.forEach(notificationDoc => {
+          const notificationData = notificationDoc.data();
+          tasksData.push({
+            id: notificationDoc.id, // ID of the individual notification
+            parentId: parentDoc.id, // Reference to the parent task
+            title: parentData.title,
+            detail: parentData.detail,
+            repeatType: parentData.repeatType,
+            notificationTime: notificationData.notificationTime, // Use the Timestamp here
+            status: notificationData.status,
+            notified: notificationData.notified,
+            color: parentData.color || "blue",
+          });
         });
-      });
-
+      }
+      
       console.log("Fetched tasks for user:", session.user.name, "ID:", session.lineUserId);
       setTasks(tasksData);
     } catch (error) {
@@ -1909,35 +1917,30 @@ export default function TaskManager() {
       setLoading(false);
     }
   };
-
+  
   const setupTasksListener = () => {
     if (!session?.lineUserId || !session?.user?.name) {
       console.log("Invalid session for listener");
       return;
     }
-
-    const q = query(
+  
+    // This listener now needs to monitor changes in subcollections as well, which requires a more complex setup or a different Firestore approach (like a collection group query).
+    // For simplicity, we'll keep the current implementation of fetching all tasks on changes for now.
+    // A more advanced solution would be needed for a true real-time listener on subcollections.
+    const parentQuery = query(
       collection(db, "tasks"),
       where("userId", "==", session.lineUserId),
-      where("userName", "==", session.user.name),
       orderBy("createdAt", "desc")
     );
-
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const tasksData = [];
-      querySnapshot.forEach((doc) => {
-        tasksData.push({
-          id: doc.id,
-          ...doc.data(),
-        });
-      });
-      console.log("Real-time tasks for:", session.user.name, tasksData.length, "tasks");
-      setTasks(tasksData);
-      setLoading(false);
+  
+    const unsubscribe = onSnapshot(parentQuery, (parentSnapshot) => {
+      // Re-fetch all tasks when a parent document changes
+      fetchTasks(); 
     });
-
+  
     return unsubscribe;
   };
+  
 
   useEffect(() => {
     if (session?.lineUserId) {
@@ -1959,25 +1962,10 @@ export default function TaskManager() {
 
     if (activeTab === "Upcoming" && upcomingFilter !== "All") {
       filteredTasks = filteredTasks.filter((task) => {
-        if (!task.date) return false;
+        if (!task.notificationTime) return false;
 
         try {
-          let taskDate;
-          if (typeof task.date === "string") {
-            if (task.date.includes("at") && task.date.includes("UTC+7")) {
-              const cleanStr = task.date.replace(" at ", " ").replace(" UTC+7", "");
-              taskDate = new Date(cleanStr);
-            } else if (task.date.includes("UTC+7")) {
-              const cleanStr = task.date.replace(" UTC+7", "");
-              taskDate = new Date(cleanStr);
-            } else {
-              taskDate = new Date(task.date);
-            }
-          }
-
-          if (isNaN(taskDate.getTime())) return false;
-
-
+          const taskDate = task.notificationTime.toDate();
           if (upcomingFilter === "Today") {
             return isToday(taskDate);
           } else if (upcomingFilter === "This Week") {
@@ -2036,29 +2024,14 @@ export default function TaskManager() {
     const targetDay = date.getDate();
 
     return tasks.filter(task => {
-      if (!task.date) return false;
+      if (!task.notificationTime) return false;
       try {
-        let taskDate;
-        if (typeof task.date === "string") {
-          if (task.date.includes("at") && task.date.includes("UTC+7")) {
-            const cleanStr = task.date.replace(" at ", " ").replace(" UTC+7", "");
-            taskDate = new Date(cleanStr);
-          } else if (task.date.includes("UTC+7")) {
-            const cleanStr = task.date.replace(" UTC+7", "");
-            taskDate = new Date(cleanStr);
-          } else {
-            taskDate = new Date(task.date);
-          }
-        }
-
-        if (isNaN(taskDate.getTime())) return false;
-
-
+        const taskDate = task.notificationTime.toDate();
         return taskDate.getFullYear() === targetYear &&
           taskDate.getMonth() === targetMonth &&
           taskDate.getDate() === targetDay;
       } catch (error) {
-        console.error("Error parsing task date:", error, task.date);
+        console.error("Error parsing task date:", error, task.notificationTime);
         return false;
       }
     });
@@ -2180,11 +2153,6 @@ export default function TaskManager() {
       day: 'numeric'
     });
 
-    // Debug information
-    // console.log("Selected Date:", selectedDate);
-    // console.log("All tasks:", tasks);
-    // console.log("Tasks for selected date:", selectedTasks);
-
     return (
       <div className="mx-4 mt-6">
         <div className="bg-white rounded-xl p-6 shadow-sm">
@@ -2194,8 +2162,6 @@ export default function TaskManager() {
             </h3>
 
           </div>
-
-
 
           {selectedTasks.length === 0 ? (
             <div className="text-center py-8">
@@ -2223,8 +2189,8 @@ export default function TaskManager() {
               {selectedTasks
                 .sort((a, b) => {
                   try {
-                    const timeA = new Date(a.date.includes("UTC+7") ? a.date.replace(" UTC+7", "") : a.date);
-                    const timeB = new Date(b.date.includes("UTC+7") ? b.date.replace(" UTC+7", "") : b.date);
+                    const timeA = a.notificationTime.toDate();
+                    const timeB = b.notificationTime.toDate();
                     return timeA - timeB;
                   } catch {
                     return 0;
@@ -2233,24 +2199,11 @@ export default function TaskManager() {
                 .map((task) => {
                   let timeStr = "";
                   try {
-                    let taskDate;
-                    if (typeof task.date === "string") {
-                      if (task.date.includes("at") && task.date.includes("UTC+7")) {
-                        const cleanStr = task.date.replace(" at ", " ").replace(" UTC+7", "");
-                        taskDate = new Date(cleanStr);
-                      } else if (task.date.includes("UTC+7")) {
-                        const cleanStr = task.date.replace(" UTC+7", "");
-                        taskDate = new Date(cleanStr);
-                      } else {
-                        taskDate = new Date(task.date);
-                      }
-                    }
-                    if (!isNaN(taskDate.getTime())) {
-                      timeStr = taskDate.toLocaleTimeString('th-TH', {
+                    const taskDate = task.notificationTime.toDate();
+                    timeStr = taskDate.toLocaleTimeString('th-TH', {
                         hour: '2-digit',
                         minute: '2-digit'
                       });
-                    }
                   } catch (error) {
                     timeStr = "Invalid time";
                   }
@@ -2282,7 +2235,7 @@ export default function TaskManager() {
                             </p>
                           )}
                           <div className="flex items-center text-gray-500 text-xs">
-                            <span>Repeat: {task.repeat}</span>
+                            <span>Repeat: {task.repeatType}</span>
                           </div>
                         </div>
 
@@ -2296,7 +2249,7 @@ export default function TaskManager() {
                               <span>Edit</span>
                             </button>
                             <button
-                              onClick={() => handleDeleteTask(task.id)}
+                              onClick={() => handleDeleteTask(task.parentId)} // Pass parentId for deletion
                               className="flex items-center space-x-1 text-xs px-2 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
                             >
                               <Trash2 className="w-3 h-3" />
@@ -2345,18 +2298,7 @@ export default function TaskManager() {
     const todayTasks = getTodayTasks();
     const morningTasks = todayTasks.filter(task => {
       try {
-        let taskDate;
-        if (typeof task.date === "string") {
-          if (task.date.includes("at") && task.date.includes("UTC+7")) {
-            const cleanStr = task.date.replace(" at ", " ").replace(" UTC+7", "");
-            taskDate = new Date(cleanStr);
-          } else if (task.date.includes("UTC+7")) {
-            const cleanStr = task.date.replace(" UTC+7", "");
-            taskDate = new Date(cleanStr);
-          } else {
-            taskDate = new Date(task.date);
-          }
-        }
+        let taskDate = task.notificationTime.toDate();
         return taskDate.getHours() < 12;
       } catch {
         return false;
@@ -2365,18 +2307,7 @@ export default function TaskManager() {
 
     const eveningTasks = todayTasks.filter(task => {
       try {
-        let taskDate;
-        if (typeof task.date === "string") {
-          if (task.date.includes("at") && task.date.includes("UTC+7")) {
-            const cleanStr = task.date.replace(" at ", " ").replace(" UTC+7", "");
-            taskDate = new Date(cleanStr);
-          } else if (task.date.includes("UTC+7")) {
-            const cleanStr = task.date.replace(" UTC+7", "");
-            taskDate = new Date(cleanStr);
-          } else {
-            taskDate = new Date(task.date);
-          }
-        }
+        let taskDate = task.notificationTime.toDate();
         return taskDate.getHours() >= 18;
       } catch {
         return false;
@@ -2923,11 +2854,11 @@ export default function TaskManager() {
                       )}
                       <div className="flex items-center text-gray-600 text-sm mb-1">
                         <Calendar className="w-4 h-4 mr-2" />
-                        <span>{formatDate(task.date)} น.</span>
+                        <span>{formatDate(task.notificationTime)} น.</span>
                       </div>
                       <div className="flex items-center text-gray-500 text-sm">
                         <Clock className="w-4 h-4 mr-2" />
-                        <span>Repeat: {task.repeat}</span>
+                        <span>Repeat: {task.repeatType}</span>
                       </div>
                     </div>
                     <div className="flex flex-col items-end space-y-2">
@@ -2949,7 +2880,7 @@ export default function TaskManager() {
                             <span>Edit</span>
                           </button>
                           <button
-                            onClick={() => handleDeleteTask(task.id)}
+                            onClick={() => handleDeleteTask(task.parentId)}
                             className="flex items-center space-x-1 text-xs px-3 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
                           >
                             <Trash2 className="w-3 h-3" />
