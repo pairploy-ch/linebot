@@ -297,7 +297,6 @@ async function handlePostback(event) {
         return;
       }
 
-      // Find the specific notification and update its status
       const notificationsQuery = await db.collection("tasks").doc(taskId).collection("notifications").get();
       if (!notificationsQuery.empty) {
         const notificationRef = notificationsQuery.docs[0].ref;
@@ -413,51 +412,6 @@ app.post("/webhook", (req, res) => {
   console.log(`[${getTimestamp()}] 🏁 Finished processing all ${events.length} events`);
 });
 
-
-async function handlePostback(event) {
-  const data = event.postback?.data;
-  const userId = event.source?.userId;
-
-  if (!data || !userId) return;
-
-  if (data.startsWith("complete_task_")) {
-    const taskId = data.replace("complete_task_", "");
-
-    try {
-      const taskRef = db.collection("tasks").doc(taskId);
-      const taskSnap = await taskRef.get();
-
-      if (!taskSnap.exists) {
-        await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ ไม่พบงานที่ระบุในระบบ" }]);
-        return;
-      }
-
-      const taskData = taskSnap.data();
-
-      if (taskData.userId !== userId) {
-        await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ คุณไม่มีสิทธิ์ในการอัปเดตงานนี้" }]);
-        return;
-      }
-
-      const notificationsQuery = await db.collection("tasks").doc(taskId).collection("notifications").get();
-      if (!notificationsQuery.empty) {
-        const notificationRef = notificationsQuery.docs[0].ref;
-        await notificationRef.update({
-          status: "Completed",
-          completedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-      }
-
-      console.log(`[${getTimestamp()}] ✅ Task "${taskData.title}" marked as Completed`);
-      await sendReplyMessage(event.replyToken, [{ type: "text", text: `✅ งาน "${taskData.title}" ถูกทำเครื่องหมายว่าเสร็จสิ้นแล้ว` }]);
-
-    } catch (error) {
-      console.error(`[${getTimestamp()}] ❌ Error processing complete_task:`, error);
-      await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ เกิดข้อผิดพลาดในการอัปเดตงาน กรุณาลองใหม่" }]);
-    }
-    return;
-  }
-}
 
 app.post("/test-complete-task", async (req, res) => {
   const { taskId, userId } = req.body;
