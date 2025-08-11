@@ -152,7 +152,7 @@ async function createTaskWithAI(prompt) {
   const response = await openaiClient.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [{ role: "user", content: analyzeCreateTaskPrompt }],
-    max_tokens: 10,
+    max_tokens: 200,
     temperature: 0,
   });
 
