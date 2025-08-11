@@ -163,6 +163,96 @@ async function createTaskWithAI(prompt) {
 
 
 
+// ... (rest of the file remains the same)
+
+// async function handlePostback(event) {
+//   const data = event.postback?.data;
+//   const userId = event.source?.userId;
+
+//   if (!data || !userId) return;
+
+//   if (data.startsWith("complete_task_")) {
+//     const notificationId = data.replace("complete_task_", "");
+
+//     try {
+//       // Use a collection group query to find the specific notification by its ID.
+//       const notificationQuery = db.collectionGroup('notifications').where(admin.firestore.FieldPath.documentId(), '==', notificationId);
+//       const notificationSnapshot = await notificationQuery.get();
+
+//       if (notificationSnapshot.empty) {
+//         await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ ไม่พบการแจ้งเตือนที่ระบุในระบบ" }]);
+//         return;
+//       }
+
+//       const notificationDoc = notificationSnapshot.docs[0];
+//       const notificationData = notificationDoc.data();
+//       const parentTaskRef = notificationDoc.ref.parent.parent;
+//       const parentTaskDoc = await parentTaskRef.get();
+//       const parentTaskData = parentTaskDoc.data();
+
+//       // Check for user ownership to prevent unauthorized updates
+//       if (parentTaskData.userId !== userId) {
+//         await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ คุณไม่มีสิทธิ์ในการอัปเดตงานนี้" }]);
+//         return;
+//       }
+
+//       // Update only the individual notification document to 'Completed'
+//       await notificationDoc.ref.update({
+//         status: "Completed",
+//         completedAt: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+
+//       console.log(`[${getTimestamp()}] ✅ Notification "${parentTaskData.title}" marked as Completed`);
+
+//       await sendReplyMessage(event.replyToken, [{
+//         type: "flex",
+//         altText: "งานถูกอัปเดตเป็นเสร็จแล้วเรียบร้อย",
+//         contents: {
+//           type: "bubble",
+//           header: {
+//             type: "box",
+//             layout: "vertical",
+//             contents: [
+//               { type: "text", text: "งานเสร็จเรียบร้อยแล้ว!", weight: "bold", color: "#ffffff", size: "lg", align: "center" },
+//             ],
+//             backgroundColor: "#10b981",
+//             paddingAll: "20px",
+//           },
+//           body: {
+//             type: "box",
+//             layout: "vertical",
+//             contents: [
+//               {
+//                 type: "box", layout: "vertical", margin: "md", spacing: "sm", contents: [
+//                   {
+//                     type: "box", layout: "baseline", spacing: "sm", contents: [
+//                       { type: "text", text: "📋 ชื่องาน:", color: "#aaaaaa", size: "sm", flex: 2, },
+//                       { type: "text", text: parentTaskData.title || "ไม่ระบุชื่อ", wrap: true, size: "sm", flex: 5, },
+//                     ],
+//                   },
+//                   {
+//                     type: "box", layout: "baseline", spacing: "sm", contents: [
+//                       { type: "text", text: "✅ สถานะ:", color: "#aaaaaa", size: "sm", flex: 2, },
+//                       { type: "text", text: "การแจ้งเตือนนี้เสร็จสิ้นแล้ว", wrap: true, size: "sm", flex: 5, color: "#059669", },
+//                     ],
+//                   },
+//                 ],
+//               },
+//             ],
+//             paddingAll: "20px",
+//           },
+//           styles: { body: { backgroundColor: "#F0F9F3" } },
+//         },
+//       }]);
+//       console.log(`[${getTimestamp()}] 🔥 Postback complete_task processed for notification: ${notificationId}`);
+//     } catch (error) {
+//       console.error(`[${getTimestamp()}] ❌ Error processing complete_task:`, error);
+//       await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ เกิดข้อผิดพลาดในการอัปเดตงาน กรุณาลองใหม่" }]);
+//     }
+//     return;
+//   }
+// }
+
 async function handlePostback(event) {
   const data = event.postback?.data;
   const userId = event.source?.userId;
@@ -170,35 +260,37 @@ async function handlePostback(event) {
   if (!data || !userId) return;
 
   if (data.startsWith("complete_task_")) {
-    const taskId = data.replace("complete_task_", "");
+    const notificationId = data.replace("complete_task_", "");
 
     try {
-      const taskRef = db.collection("tasks").doc(taskId);
-      const taskSnap = await taskRef.get();
+      // Use a collection group query to find the specific notification by its ID.
+      const notificationQuery = db.collectionGroup('notifications').where(admin.firestore.FieldPath.documentId(), '==', notificationId);
+      const notificationSnapshot = await notificationQuery.get();
 
-      if (!taskSnap.exists) {
-        await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ ไม่พบงานที่ระบุในระบบ" }]);
+      if (notificationSnapshot.empty) {
+        await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ ไม่พบการแจ้งเตือนที่ระบุในระบบ" }]);
         return;
       }
 
-      const taskData = taskSnap.data();
+      const notificationDoc = notificationSnapshot.docs[0];
+      const notificationData = notificationDoc.data();
+      const parentTaskRef = notificationDoc.ref.parent.parent;
+      const parentTaskDoc = await parentTaskRef.get();
+      const parentTaskData = parentTaskDoc.data();
 
-      if (taskData.userId !== userId) {
+      // Check for user ownership to prevent unauthorized updates
+      if (parentTaskData.userId !== userId) {
         await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ คุณไม่มีสิทธิ์ในการอัปเดตงานนี้" }]);
         return;
       }
 
-      await taskRef.update({
+      // Update only the individual notification document to 'Completed'
+      await notificationDoc.ref.update({
         status: "Completed",
         completedAt: admin.firestore.FieldValue.serverTimestamp(),
-        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-        completedFromLine: true,
-        repeat: "Never",
-        repeatStopped: true,
-        repeatStoppedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      console.log(`[${getTimestamp()}] ✅ Task "${taskData.title}" marked as Completed and repeat stopped`);
+      console.log(`[${getTimestamp()}] ✅ Notification "${parentTaskData.title}" marked as Completed`);
 
       await sendReplyMessage(event.replyToken, [{
         type: "flex",
@@ -223,13 +315,13 @@ async function handlePostback(event) {
                   {
                     type: "box", layout: "baseline", spacing: "sm", contents: [
                       { type: "text", text: "📋 ชื่องาน:", color: "#aaaaaa", size: "sm", flex: 2, },
-                      { type: "text", text: taskData.title || "ไม่ระบุชื่อ", wrap: true, size: "sm", flex: 5, },
+                      { type: "text", text: parentTaskData.title || "ไม่ระบุชื่อ", wrap: true, size: "sm", flex: 5, },
                     ],
                   },
                   {
                     type: "box", layout: "baseline", spacing: "sm", contents: [
                       { type: "text", text: "✅ สถานะ:", color: "#aaaaaa", size: "sm", flex: 2, },
-                      { type: "text", text: "งานเสร็จสิ้นแล้ว", wrap: true, size: "sm", flex: 5, color: "#059669", },
+                      { type: "text", text: "การแจ้งเตือนนี้เสร็จสิ้นแล้ว", wrap: true, size: "sm", flex: 5, color: "#059669", },
                     ],
                   },
                 ],
@@ -240,7 +332,7 @@ async function handlePostback(event) {
           styles: { body: { backgroundColor: "#F0F9F3" } },
         },
       }]);
-      console.log(`[${getTimestamp()}] 🔥 Postback complete_task processed: ${taskId}`);
+      console.log(`[${getTimestamp()}] 🔥 Postback complete_task processed for notification: ${notificationId}`);
     } catch (error) {
       console.error(`[${getTimestamp()}] ❌ Error processing complete_task:`, error);
       await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ เกิดข้อผิดพลาดในการอัปเดตงาน กรุณาลองใหม่" }]);
@@ -248,6 +340,7 @@ async function handlePostback(event) {
     return;
   }
 }
+
 
 app.post("/webhook", (req, res) => {
   const receivedTime = getTimestamp();
