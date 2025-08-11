@@ -1511,7 +1511,6 @@
 //     </div>
 //   );
 // }
-
 "use client";
 
 import { useSession, signIn, signOut } from "next-auth/react";
@@ -1529,6 +1528,7 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  CheckCircle,
 } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
 
@@ -1553,7 +1553,7 @@ import moment from "moment-timezone";
 export default function TaskManager() {
   const { data: session } = useSession();
   const [activeTab, setActiveTab] = useState("Upcoming");
-  const [upcomingFilter, setUpcomingFilter] = useState("All"); // เพิ่ม state สำหรับ filter
+  const [upcomingFilter, setUpcomingFilter] = useState("All");
   const [currentView, setCurrentView] = useState("home");
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1573,13 +1573,10 @@ export default function TaskManager() {
     status: "Upcoming",
   });
 
-  //สถานะทั้งหมด
   const tabs = ["Upcoming", "Completed", "Overdue"];
 
-  // Filter options สำหรับ Upcoming tab
   const upcomingFilters = ["Today", "This Week", "All"];
 
-  // function กรองวันที่ ของ tab Upcoming
   const isToday = (date) => {
     const today = new Date();
     return date.toDateString() === today.toDateString();
@@ -1590,10 +1587,8 @@ export default function TaskManager() {
     const weekStart = new Date(today);
     const weekEnd = new Date(today);
 
-
     weekStart.setDate(today.getDate() - today.getDay());
     weekStart.setHours(0, 0, 0, 0);
-
 
     weekEnd.setDate(today.getDate() + (6 - today.getDay()));
     weekEnd.setHours(23, 59, 59, 999);
@@ -1630,21 +1625,18 @@ export default function TaskManager() {
     return dates;
   };
 
-  //function add task
   const handleAddTask = async () => {
     if (!session?.lineUserId || !newTask.title.trim() || !newTask.date || !newTask.time) {
       toast.error("Please fill in all required fields.");
       return;
     }
 
-    // New validation for repeating tasks
     if (newTask.repeat !== "Never" && !newTask.endDate) {
       toast.error("Please provide an end date for repeating tasks.");
       return;
     }
 
     try {
-      // 1. Create the master task document
       const masterTask = {
         title: newTask.title,
         detail: newTask.detail,
@@ -1658,7 +1650,6 @@ export default function TaskManager() {
 
       const docRef = await addDoc(collection(db, "tasks"), masterTask);
 
-      // 2. Calculate and create notifications as a subcollection
       const notificationDates = calculateNotificationDates(
         newTask.date,
         newTask.time,
@@ -1675,7 +1666,6 @@ export default function TaskManager() {
         });
       }
 
-      // Reset state and show success message
       setCurrentView("home");
       setNewTask({
         title: "",
@@ -1694,7 +1684,6 @@ export default function TaskManager() {
     }
   };
 
-  // Modal ยืนยันการลบ
   const DeleteModal = () => {
     if (!showDeleteModal) return null;
 
@@ -1737,7 +1726,6 @@ export default function TaskManager() {
     );
   };
 
-  //function delete task
   const handleDeleteTask = async (taskToDeleteId) => {
     setTaskToDelete(taskToDeleteId);
     setShowDeleteModal(true);
@@ -1747,23 +1735,18 @@ export default function TaskManager() {
     if (!taskToDelete) return;
 
     try {
-      // Find the parent task document
       const parentTaskRef = doc(db, "tasks", taskToDelete);
-      
-      // Get the subcollection documents
       const subcollectionSnapshot = await getDocs(collection(parentTaskRef, "notifications"));
 
-      // Use a batch to delete all documents at once
       const batch = writeBatch(db);
       subcollectionSnapshot.docs.forEach(subDoc => {
         batch.delete(subDoc.ref);
       });
-      
-      // Delete the parent document
+
       batch.delete(parentTaskRef);
 
       await batch.commit();
-      
+
       toast.success("ลบ task สำเร็จแล้ว!");
     } catch (error) {
       console.error("ลบ task ล้มเหลว:", error);
@@ -1773,10 +1756,21 @@ export default function TaskManager() {
       setTaskToDelete(null);
     }
   };
-  
+
+  const handleCompleteTask = async (task) => {
+    try {
+      const notificationRef = doc(db, "tasks", task.parentId, "notifications", task.id);
+      await updateDoc(notificationRef, {
+        status: "Completed",
+      });
+      toast.success("Task completed successfully!");
+    } catch (error) {
+      console.error("Failed to complete task:", error);
+      toast.error("Failed to complete task.");
+    }
+  };
+
   const handleEditTask = (task) => {
-    // You'll need to fetch the parent task to get repeat information, then edit the specific notification
-    // For now, let's keep it simple by just editing the one notification
     let dateValue = "";
     let timeValue = "";
 
@@ -1799,25 +1793,24 @@ export default function TaskManager() {
       toast.error("กรุณาใส่ชื่อ task");
       return;
     }
-  
+
     try {
       const parentTaskRef = doc(db, "tasks", editingTask.parentId);
       const notificationRef = doc(db, "tasks", editingTask.parentId, "notifications", editingTask.id);
-  
-      // Update the parent task with the new title/detail (if needed)
+
+      // Update the parent task with the new title/detail (if they have changed)
       await updateDoc(parentTaskRef, {
         title: editingTask.title,
         detail: editingTask.detail,
         updatedAt: Timestamp.now(),
       });
-  
-      // Update the specific notification
-      const updatedNotification = {
+
+      // Update the specific notification's time and status
+      await updateDoc(notificationRef, {
         notificationTime: Timestamp.fromDate(new Date(`${editingTask.date}T${editingTask.time}`)),
         status: editingTask.status,
-      };
-      await updateDoc(notificationRef, updatedNotification);
-  
+      });
+
       setCurrentView("home");
       setEditingTask(null);
       toast.success("อัพเดท task สำเร็จแล้ว!");
@@ -1826,20 +1819,20 @@ export default function TaskManager() {
       toast.error("อัพเดท task ล้มเหลว");
     }
   };
-  
+
   const formatDate = (dateValue, options = {}) => {
     if (!dateValue) return "No date";
-  
+
     let date;
     if (dateValue instanceof Timestamp) {
       date = dateValue.toDate();
     } else {
       date = new Date(dateValue);
     }
-  
+
     try {
       if (isNaN(date.getTime())) return "Invalid Date";
-  
+
       return date.toLocaleString("th-TH", {
         dateStyle: "medium",
         timeStyle: "short",
@@ -1849,12 +1842,12 @@ export default function TaskManager() {
       return "Invalid Date";
     }
   };
-  
+
   const formatDateTime = (date, time) => {
     if (!date || !time) return "";
-  
+
     const dateTime = new Date(`${date}T${time}`);
-  
+
     const options = {
       year: "numeric",
       month: "long",
@@ -1865,11 +1858,11 @@ export default function TaskManager() {
       hour12: true,
       timeZone: "Asia/Bangkok",
     };
-  
+
     const formatted = dateTime.toLocaleDateString("en-US", options);
     return `${formatted} UTC+7`;
   };
-  
+
   const fetchTasks = async () => {
     try {
       setLoading(true);
@@ -1878,37 +1871,37 @@ export default function TaskManager() {
         setTasks([]);
         return;
       }
-  
+
       const tasksData = [];
       const parentQuery = query(
         collection(db, "tasks"),
         where("userId", "==", session.lineUserId),
         orderBy("createdAt", "desc")
       );
-  
+
       const parentSnapshot = await getDocs(parentQuery);
-  
+
       for (const parentDoc of parentSnapshot.docs) {
         const parentData = parentDoc.data();
         const notificationsQuery = collection(parentDoc.ref, "notifications");
         const notificationsSnapshot = await getDocs(notificationsQuery);
-  
+
         notificationsSnapshot.forEach(notificationDoc => {
           const notificationData = notificationDoc.data();
           tasksData.push({
-            id: notificationDoc.id, // ID of the individual notification
-            parentId: parentDoc.id, // Reference to the parent task
+            id: notificationDoc.id,
+            parentId: parentDoc.id,
             title: parentData.title,
             detail: parentData.detail,
             repeatType: parentData.repeatType,
-            notificationTime: notificationData.notificationTime, // Use the Timestamp here
+            notificationTime: notificationData.notificationTime,
             status: notificationData.status,
             notified: notificationData.notified,
             color: parentData.color || "blue",
           });
         });
       }
-      
+
       console.log("Fetched tasks for user:", session.user.name, "ID:", session.lineUserId);
       setTasks(tasksData);
     } catch (error) {
@@ -1917,30 +1910,26 @@ export default function TaskManager() {
       setLoading(false);
     }
   };
-  
+
   const setupTasksListener = () => {
     if (!session?.lineUserId || !session?.user?.name) {
       console.log("Invalid session for listener");
       return;
     }
-  
-    // This listener now needs to monitor changes in subcollections as well, which requires a more complex setup or a different Firestore approach (like a collection group query).
-    // For simplicity, we'll keep the current implementation of fetching all tasks on changes for now.
-    // A more advanced solution would be needed for a true real-time listener on subcollections.
+
     const parentQuery = query(
       collection(db, "tasks"),
       where("userId", "==", session.lineUserId),
       orderBy("createdAt", "desc")
     );
-  
+
     const unsubscribe = onSnapshot(parentQuery, (parentSnapshot) => {
-      // Re-fetch all tasks when a parent document changes
-      fetchTasks(); 
+      fetchTasks();
     });
-  
+
     return unsubscribe;
   };
-  
+
 
   useEffect(() => {
     if (session?.lineUserId) {
@@ -1958,7 +1947,6 @@ export default function TaskManager() {
 
   const getFilteredTasks = () => {
     let filteredTasks = tasks.filter((task) => task.status === activeTab);
-
 
     if (activeTab === "Upcoming" && upcomingFilter !== "All") {
       filteredTasks = filteredTasks.filter((task) => {
@@ -2059,11 +2047,9 @@ export default function TaskManager() {
 
     const days = [];
 
-
     for (let i = 0; i < firstDay; i++) {
       days.push(<div key={`empty-${i}`} className="h-12"></div>);
     }
-
 
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
@@ -2078,8 +2064,8 @@ export default function TaskManager() {
           className="h-12 relative hover:bg-gray-50 rounded-lg transition-colors p-1"
         >
           <div className={`w-10 h-10 flex items-center justify-center rounded-full text-sm font-medium transition-colors ${isToday ? 'bg-black text-white' :
-              isSelected ? 'bg-blue-500 text-white' :
-                'text-gray-900 hover:bg-gray-100'
+            isSelected ? 'bg-blue-500 text-white' :
+              'text-gray-900 hover:bg-gray-100'
             }`}>
             {day}
           </div>
@@ -2089,7 +2075,7 @@ export default function TaskManager() {
                 <div
                   key={index}
                   className={`w-2 h-2 rounded-full ${task.status === 'Completed' ? 'bg-green-400' :
-                      task.status === 'Overdue' ? 'bg-red-400' : 'bg-blue-400'
+                    task.status === 'Overdue' ? 'bg-red-400' : 'bg-blue-400'
                     }`}
                 />
               ))}
@@ -2179,9 +2165,10 @@ export default function TaskManager() {
                   });
                   setCurrentView("addTask");
                 }}
-                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+                className="w-full bg-blue-50 text-blue-600 py-3 rounded-lg hover:bg-blue-100 transition-colors flex items-center justify-center space-x-2"
               >
-                Add Task for This Day
+                <Plus className="w-4 h-4" />
+                <span>Add New Task</span>
               </button>
             </div>
           ) : (
@@ -2201,9 +2188,9 @@ export default function TaskManager() {
                   try {
                     const taskDate = task.notificationTime.toDate();
                     timeStr = taskDate.toLocaleTimeString('th-TH', {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      });
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    });
                   } catch (error) {
                     timeStr = "Invalid time";
                   }
@@ -2238,25 +2225,44 @@ export default function TaskManager() {
                             <span>Repeat: {task.repeatType}</span>
                           </div>
                         </div>
-
-                        {task.status === "Upcoming" && (
-                          <div className="flex space-x-2 ml-4">
-                            <button
-                              onClick={() => handleEditTask(task)}
-                              className="flex items-center space-x-1 text-xs px-2 py-1 bg-blue-100 text-blue-600 rounded-md hover:bg-blue-200 transition-colors"
-                            >
-                              <Edit className="w-3 h-3" />
-                              <span>Edit</span>
-                            </button>
-                            <button
-                              onClick={() => handleDeleteTask(task.parentId)} // Pass parentId for deletion
-                              className="flex items-center space-x-1 text-xs px-2 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                              <span>Delete</span>
-                            </button>
-                          </div>
-                        )}
+                        <div className="flex space-x-2 ml-4">
+                          {task.status === "Upcoming" && (
+                            <>
+                              <button
+                                onClick={() => handleCompleteTask(task)}
+                                className="flex items-center space-x-1 text-xs px-2 py-1 bg-green-100 text-green-600 rounded-md hover:bg-green-200 transition-colors"
+                              >
+                                <CheckCircle className="w-3 h-3" />
+                                <span>Complete</span>
+                              </button>
+                              <button
+                                onClick={() => handleEditTask(task)}
+                                className="flex items-center space-x-1 text-xs px-2 py-1 bg-blue-100 text-blue-600 rounded-md hover:bg-blue-200 transition-colors"
+                              >
+                                <Edit className="w-3 h-3" />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                onClick={() => handleDeleteTask(task.parentId)}
+                                className="flex items-center space-x-1 text-xs px-2 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Delete</span>
+                              </button>
+                            </>
+                          )}
+                          {(task.status === "Completed" || task.status === "Overdue") && (
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={() => handleDeleteTask(task.parentId)}
+                                className="flex items-center space-x-1 text-xs px-2 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Delete</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -2292,7 +2298,6 @@ export default function TaskManager() {
   };
 
   const renderTodaySchedule = () => {
-
     if (selectedDate) return null;
 
     const todayTasks = getTodayTasks();
@@ -2517,7 +2522,6 @@ export default function TaskManager() {
             </div>
           </div>
 
-          {/* ADDED: End date input field */}
           {newTask.repeat !== "Never" && (
             <div>
               <label className="block text-gray-700 text-sm font-medium mb-2">
@@ -2691,9 +2695,9 @@ export default function TaskManager() {
             <div className="relative">
               <select
                 style={{ color: '#000' }}
-                value={editingTask.repeat}
+                value={editingTask.repeatType}
                 onChange={(e) =>
-                  setEditingTask({ ...editingTask, repeat: e.target.value })
+                  setEditingTask({ ...editingTask, repeatType: e.target.value })
                 }
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
               >
@@ -2792,8 +2796,8 @@ export default function TaskManager() {
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === tab
-                      ? "bg-blue-500 text-white"
-                      : "text-gray-500 hover:text-gray-700"
+                    ? "bg-blue-500 text-white"
+                    : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
                   {tab}
@@ -2811,8 +2815,8 @@ export default function TaskManager() {
                     key={filter}
                     onClick={() => setUpcomingFilter(filter)}
                     className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${upcomingFilter === filter
-                        ? "bg-blue-100 text-blue-600 border border-blue-300"
-                        : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+                      ? "bg-blue-100 text-blue-600 border border-blue-300"
+                      : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
                       }`}
                   >
                     {filter}
@@ -2873,12 +2877,30 @@ export default function TaskManager() {
                       {task.status === "Upcoming" && (
                         <div className="flex space-x-2">
                           <button
+                            onClick={() => handleCompleteTask(task)}
+                            className="flex items-center space-x-1 text-xs px-3 py-1 bg-green-100 text-green-600 rounded-md hover:bg-green-200 transition-colors"
+                          >
+                            <CheckCircle className="w-3 h-3" />
+                            <span>Complete</span>
+                          </button>
+                          <button
                             onClick={() => handleEditTask(task)}
                             className="flex items-center space-x-1 text-xs px-3 py-1 bg-blue-100 text-blue-600 rounded-md hover:bg-blue-200 transition-colors"
                           >
                             <Edit className="w-3 h-3" />
                             <span>Edit</span>
                           </button>
+                          <button
+                            onClick={() => handleDeleteTask(task.parentId)}
+                            className="flex items-center space-x-1 text-xs px-3 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      )}
+                      {(task.status === "Completed" || task.status === "Overdue") && (
+                        <div className="flex space-x-2">
                           <button
                             onClick={() => handleDeleteTask(task.parentId)}
                             className="flex items-center space-x-1 text-xs px-3 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
