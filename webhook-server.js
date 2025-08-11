@@ -260,7 +260,6 @@ async function handlePostback(event) {
   if (!data || !userId) return;
 
   if (data.startsWith("complete_task_")) {
-    // Correctly parse the new postback data format
     const parts = data.split('_');
     if (parts.length < 6) {
       console.error(`[${getTimestamp()}] ❌ Invalid postback data format: ${data}`);
@@ -279,15 +278,21 @@ async function handlePostback(event) {
         return;
       }
 
-      const notificationData = notificationDoc.data();
+      const parentTaskRef = notificationDoc.ref.parent.parent;
+      const parentTaskDoc = await parentTaskRef.get();
+      const parentTaskData = parentTaskDoc.data();
 
-      // Update only the individual notification document to 'Completed'
+      if (parentTaskData.userId !== userId) {
+        await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ คุณไม่มีสิทธิ์ในการอัปเดตงานนี้" }]);
+        return;
+      }
+
       await notificationRef.update({
         status: "Completed",
         completedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      console.log(`[${getTimestamp()}] ✅ Notification "${notificationData.title}" for task "${parentTaskId}" marked as Completed`);
+      console.log(`[${getTimestamp()}] ✅ Notification "${parentTaskData.title}" for task "${parentTaskId}" marked as Completed`);
 
       await sendReplyMessage(event.replyToken, [{
         type: "flex",
@@ -312,7 +317,7 @@ async function handlePostback(event) {
                   {
                     type: "box", layout: "baseline", spacing: "sm", contents: [
                       { type: "text", text: "📋 ชื่องาน:", color: "#aaaaaa", size: "sm", flex: 2, },
-                      { type: "text", text: notificationData.title || "ไม่ระบุชื่อ", wrap: true, size: "sm", flex: 5, },
+                      { type: "text", text: parentTaskData.title || "ไม่ระบุชื่อ", wrap: true, size: "sm", flex: 5, },
                     ],
                   },
                   {
@@ -337,6 +342,7 @@ async function handlePostback(event) {
     return;
   }
 }
+
 
 
 app.post("/webhook", (req, res) => {

@@ -694,12 +694,7 @@ function createTaskFlexMessage(task) {
             type: "button",
             style: "primary",
             height: "sm",
-            // action: {
-            //   type: "postback",
-            //   label: "Done",
-            //   data: `complete_task_${task.id}`,
-            //   displayText: "งานนี้เสร็จแล้ว ✅"
-            // },
+            // The corrected data string now contains all necessary IDs
             action: {
               type: "postback",
               label: "Done",
@@ -715,6 +710,7 @@ function createTaskFlexMessage(task) {
     }
   };
 }
+
 
 async function sendLineMessage(userId, message) {
   const timestamp = getTimestamp();
