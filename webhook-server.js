@@ -697,7 +697,8 @@ async function handleAddTaskServer(taskData, lineUserId, userName) {
       userName: userName,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
-    const docRef = await addDoc(userTasksCollectionRef, masterTask);
+    // FIX: Use the add() method on the collection reference
+    const docRef = await userTasksCollectionRef.add(masterTask);
     console.log(`[${getTimestamp()}] ✅ Parent task document created with ID: ${docRef.id}`);
 
     // Step 3: Calculate and create notifications as a subcollection
@@ -725,7 +726,8 @@ async function handleAddTaskServer(taskData, lineUserId, userName) {
 
     const notificationsCollectionRef = collection(docRef, "notifications");
     for (const date of notificationDates) {
-      await addDoc(notificationsCollectionRef, {
+      // FIX: Use the add() method on the subcollection reference
+      await notificationsCollectionRef.add({
         notificationTime: Timestamp.fromDate(date),
         status: "Upcoming",
         notified: false,
