@@ -31,7 +31,9 @@ import {
   orderBy,
   onSnapshot,
   Timestamp,
-  writeBatch
+  writeBatch,
+  collectionGroup, // ADDED: New import for Collection Group queries
+  getDoc,
 } from "firebase/firestore";
 import { db } from "../app/firebase/config";
 
@@ -47,7 +49,7 @@ export default function TaskManager() {
   const [editingTask, setEditingTask] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState(null);
-  const [deleteType, setDeleteType] = useState(null); // NEW: State for delete type
+  const [deleteType, setDeleteType] = useState(null);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
   const [newTask, setNewTask] = useState({
@@ -151,6 +153,7 @@ export default function TaskManager() {
           notificationTime: Timestamp.fromDate(date),
           status: "Upcoming",
           notified: false,
+          userId: session.lineUserId, // ADDED: Add userId to each notification for Collection Group query
         });
       }
 
@@ -172,7 +175,6 @@ export default function TaskManager() {
     }
   };
 
-  // UPDATED: Modal now has two delete options
   const DeleteModal = () => {
     if (!showDeleteModal) return null;
 
@@ -221,14 +223,12 @@ export default function TaskManager() {
       </div>
     );
   };
-
-  // UPDATED: Function to trigger the modal, sets the task and type
+  
   const handleDeleteTask = async (task) => {
     setTaskToDelete(task);
     setShowDeleteModal(true);
   };
-
-  // NEW: Function to delete a single notification
+  
   const deleteSingleNotification = async () => {
     try {
       await deleteDoc(doc(db, "tasks", taskToDelete.parentId, "notifications", taskToDelete.id));
@@ -239,7 +239,6 @@ export default function TaskManager() {
     }
   };
 
-  // NEW: Function to delete the parent task and all notifications
   const deleteAllOccurrences = async () => {
     if (!taskToDelete) return;
     try {
@@ -250,10 +249,10 @@ export default function TaskManager() {
       subcollectionSnapshot.docs.forEach(subDoc => {
         batch.delete(subDoc.ref);
       });
-
+      
       batch.delete(parentTaskRef);
       await batch.commit();
-
+      
       toast.success("ลบงานทั้งหมดสำเร็จแล้ว!");
     } catch (error) {
       console.error("ลบงานทั้งหมดล้มเหลว:", error);
@@ -261,21 +260,20 @@ export default function TaskManager() {
     }
   };
 
-  // UPDATED: Main delete function that calls the correct sub-function
   const confirmDeleteTask = async (type) => {
     if (!taskToDelete) return;
 
     if (type === 'single') {
-      await deleteSingleNotification();
+        await deleteSingleNotification();
     } else if (type === 'all') {
-      await deleteAllOccurrences();
+        await deleteAllOccurrences();
     }
 
     setShowDeleteModal(false);
     setTaskToDelete(null);
     setDeleteType(null);
   };
-
+  
   const handleCompleteTask = async (task) => {
     try {
       const notificationRef = doc(db, "tasks", task.parentId, "notifications", task.id);
@@ -288,7 +286,7 @@ export default function TaskManager() {
       toast.error("Failed to complete task.");
     }
   };
-
+  
   const handleEditTask = (task) => {
     let dateValue = "";
     let timeValue = "";
@@ -312,24 +310,22 @@ export default function TaskManager() {
       toast.error("กรุณาใส่ชื่อ task");
       return;
     }
-
+  
     try {
       const parentTaskRef = doc(db, "tasks", editingTask.parentId);
       const notificationRef = doc(db, "tasks", editingTask.parentId, "notifications", editingTask.id);
-
-      // Update the parent task with the new title/detail (if they have changed)
+  
       await updateDoc(parentTaskRef, {
         title: editingTask.title,
         detail: editingTask.detail,
         updatedAt: Timestamp.now(),
       });
-
-      // Update the specific notification's time and status
+  
       await updateDoc(notificationRef, {
         notificationTime: Timestamp.fromDate(new Date(`${editingTask.date}T${editingTask.time}`)),
         status: editingTask.status,
       });
-
+  
       setCurrentView("home");
       setEditingTask(null);
       toast.success("อัพเดท task สำเร็จแล้ว!");
@@ -338,20 +334,20 @@ export default function TaskManager() {
       toast.error("อัพเดท task ล้มเหลว");
     }
   };
-
+  
   const formatDate = (dateValue, options = {}) => {
     if (!dateValue) return "No date";
-
+  
     let date;
     if (dateValue instanceof Timestamp) {
       date = dateValue.toDate();
     } else {
       date = new Date(dateValue);
     }
-
+  
     try {
       if (isNaN(date.getTime())) return "Invalid Date";
-
+  
       return date.toLocaleString("th-TH", {
         dateStyle: "medium",
         timeStyle: "short",
@@ -361,35 +357,55 @@ export default function TaskManager() {
       return "Invalid Date";
     }
   };
-
+  
+  const formatDateTime = (date, time) => {
+    if (!date || !time) return "";
+  
+    const dateTime = new Date(`${date}T${time}`);
+  
+    const options = {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+      second: "2-digit",
+      hour12: true,
+      timeZone: "Asia/Bangkok",
+    };
+  
+    const formatted = dateTime.toLocaleDateString("en-US", options);
+    return `${formatted} UTC+7`;
+  };
+  
+  // UPDATED: Fetches all notifications using a Collection Group query
   const fetchTasks = async () => {
     try {
       setLoading(true);
-      if (!session?.lineUserId || !session?.user?.name) {
-        console.log("No valid session data");
+      if (!session?.lineUserId) {
         setTasks([]);
         return;
       }
-
+  
       const tasksData = [];
-      const parentQuery = query(
-        collection(db, "tasks"),
-        where("userId", "==", session.lineUserId),
-        orderBy("createdAt", "desc")
+      const notificationsQuery = query(
+        collectionGroup(db, 'notifications'),
+        where('userId', '==', session.lineUserId),
+        orderBy('notificationTime', 'desc')
       );
-
-      const parentSnapshot = await getDocs(parentQuery);
-
-      for (const parentDoc of parentSnapshot.docs) {
-        const parentData = parentDoc.data();
-        const notificationsQuery = collection(parentDoc.ref, "notifications");
-        const notificationsSnapshot = await getDocs(notificationsQuery);
-
-        notificationsSnapshot.forEach(notificationDoc => {
-          const notificationData = notificationDoc.data();
+  
+      const notificationsSnapshot = await getDocs(notificationsQuery);
+  
+      for (const notificationDoc of notificationsSnapshot.docs) {
+        const notificationData = notificationDoc.data();
+        const parentTaskRef = notificationDoc.ref.parent.parent;
+        const parentTaskDoc = await getDoc(parentTaskRef);
+  
+        if (parentTaskDoc.exists()) {
+          const parentData = parentTaskDoc.data();
           tasksData.push({
             id: notificationDoc.id,
-            parentId: parentDoc.id,
+            parentId: parentTaskRef.id,
             title: parentData.title,
             detail: parentData.detail,
             repeatType: parentData.repeatType,
@@ -398,10 +414,9 @@ export default function TaskManager() {
             notified: notificationData.notified,
             color: parentData.color || "blue",
           });
-        });
+        }
       }
-
-      console.log("Fetched tasks for user:", session.user.name, "ID:", session.lineUserId);
+      
       setTasks(tasksData);
     } catch (error) {
       console.error("Error fetching tasks:", error);
@@ -409,26 +424,47 @@ export default function TaskManager() {
       setLoading(false);
     }
   };
-
+  
+  // UPDATED: Sets up a real-time listener on the notifications Collection Group
   const setupTasksListener = () => {
-    if (!session?.lineUserId || !session?.user?.name) {
-      console.log("Invalid session for listener");
-      return;
+    if (!session?.lineUserId) {
+      return () => {};
     }
-
-    const parentQuery = query(
-      collection(db, "tasks"),
-      where("userId", "==", session.lineUserId),
-      orderBy("createdAt", "desc")
+  
+    const notificationsQuery = query(
+      collectionGroup(db, 'notifications'),
+      where('userId', '==', session.lineUserId),
+      orderBy('notificationTime', 'desc')
     );
+  
+    const unsubscribe = onSnapshot(notificationsQuery, async (notificationsSnapshot) => {
+      const tasksData = [];
+      for (const notificationDoc of notificationsSnapshot.docs) {
+        const notificationData = notificationDoc.data();
+        const parentTaskRef = notificationDoc.ref.parent.parent;
+        const parentTaskDoc = await getDoc(parentTaskRef);
 
-    const unsubscribe = onSnapshot(parentQuery, (parentSnapshot) => {
-      fetchTasks();
+        if (parentTaskDoc.exists()) {
+          const parentData = parentTaskDoc.data();
+          tasksData.push({
+            id: notificationDoc.id,
+            parentId: parentTaskRef.id,
+            title: parentData.title,
+            detail: parentData.detail,
+            repeatType: parentData.repeatType,
+            notificationTime: notificationData.notificationTime,
+            status: notificationData.status,
+            notified: notificationData.notified,
+            color: parentData.color || "blue",
+          });
+        }
+      }
+      setTasks(tasksData);
     });
-
+  
     return unsubscribe;
   };
-
+  
 
   useEffect(() => {
     if (session?.lineUserId) {
@@ -496,7 +532,6 @@ export default function TaskManager() {
     }
   };
 
-  // Calendar functions
   const getDaysInMonth = (date) => {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   };
@@ -563,8 +598,8 @@ export default function TaskManager() {
           className="h-12 relative hover:bg-gray-50 rounded-lg transition-colors p-1"
         >
           <div className={`w-10 h-10 flex items-center justify-center rounded-full text-sm font-medium transition-colors ${isToday ? 'bg-black text-white' :
-            isSelected ? 'bg-blue-500 text-white' :
-              'text-gray-900 hover:bg-gray-100'
+              isSelected ? 'bg-blue-500 text-white' :
+                'text-gray-900 hover:bg-gray-100'
             }`}>
             {day}
           </div>
@@ -574,7 +609,7 @@ export default function TaskManager() {
                 <div
                   key={index}
                   className={`w-2 h-2 rounded-full ${task.status === 'Completed' ? 'bg-green-400' :
-                    task.status === 'Overdue' ? 'bg-red-400' : 'bg-blue-400'
+                      task.status === 'Overdue' ? 'bg-red-400' : 'bg-blue-400'
                     }`}
                 />
               ))}
@@ -645,9 +680,7 @@ export default function TaskManager() {
             <h3 className="text-lg font-semibold text-gray-900">
               Tasks for {dateStr}
             </h3>
-
           </div>
-
           {selectedTasks.length === 0 ? (
             <div className="text-center py-8">
               <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
@@ -687,9 +720,9 @@ export default function TaskManager() {
                   try {
                     const taskDate = task.notificationTime.toDate();
                     timeStr = taskDate.toLocaleTimeString('th-TH', {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    });
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      });
                   } catch (error) {
                     timeStr = "Invalid time";
                   }
@@ -742,7 +775,7 @@ export default function TaskManager() {
                                 <span>Edit</span>
                               </button>
                               <button
-                                onClick={() => handleDeleteTask(task)} // Pass the full task object
+                                onClick={() => handleDeleteTask(task)}
                                 className="flex items-center space-x-1 text-xs px-2 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
                               >
                                 <Trash2 className="w-3 h-3" />
@@ -752,13 +785,13 @@ export default function TaskManager() {
                           )}
                           {(task.status === "Completed" || task.status === "Overdue") && (
                             <div className="flex space-x-2">
-                              <button
-                                onClick={() => handleDeleteTask(task)} // Pass the full task object
-                                className="flex items-center space-x-1 text-xs px-2 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                                <span>Delete</span>
-                              </button>
+                                <button
+                                    onClick={() => handleDeleteTask(task)}
+                                    className="flex items-center space-x-1 text-xs px-2 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
+                                >
+                                    <Trash2 className="w-3 h-3" />
+                                    <span>Delete</span>
+                                </button>
                             </div>
                           )}
                         </div>
@@ -870,25 +903,16 @@ export default function TaskManager() {
     );
   };
 
-  // Calendar View
   if (currentView === "calendar") {
     return (
       <div className="min-h-screen" style={{ background: "#F0F5FB" }}>
         <Toaster position="top-right" />
-
-        {/* Header */}
         <div className="px-6 pt-8 pb-4">
           <h1 className="text-3xl font-bold text-gray-900">Calendar</h1>
           <p className="text-gray-600">Your task schedule</p>
         </div>
-
-        {/* Calendar */}
         {renderCalendar()}
-
-        {/* Selected Date Tasks or Today's Schedule */}
         {selectedDate ? renderSelectedDateTasks() : renderTodaySchedule()}
-
-        {/* Bottom Navigation */}
         <div
           className="fixed bottom-0 left-0 right-0 bg-white border-gray-200 m-4"
           style={{ borderRadius: "200px" }}
@@ -901,14 +925,12 @@ export default function TaskManager() {
               >
                 <Home className="w-6 h-6 text-gray-400" />
               </button>
-
               <button
                 className="bg-blue-100 p-3 rounded-xl"
                 onClick={() => setCurrentView("addTask")}
               >
                 <Plus className="w-6 h-6 text-blue-600" />
               </button>
-
               <button
                 className="bg-blue-500 p-4"
                 style={{ padding: "20px 40px", borderRadius: "200px" }}
@@ -919,7 +941,6 @@ export default function TaskManager() {
             </div>
           </div>
         </div>
-
         <div className="h-24"></div>
       </div>
     );
@@ -931,7 +952,6 @@ export default function TaskManager() {
         <div className="bg-white px-6 py-8">
           <h1 className="text-3xl font-bold text-gray-900">Add New Task</h1>
         </div>
-
         <div className="px-6 py-6 space-y-6 bg-white">
           <div>
             <label className="block text-gray-700 text-sm font-medium mb-2">
@@ -948,7 +968,6 @@ export default function TaskManager() {
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-
           <div>
             <label className="block text-gray-700 text-sm font-medium mb-2">
               Detail *
@@ -964,7 +983,6 @@ export default function TaskManager() {
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
           </div>
-
           <div>
             <label className="block text-gray-700 text-sm font-medium mb-2">
               Date *
@@ -981,7 +999,6 @@ export default function TaskManager() {
               />
             </div>
           </div>
-
           <div>
             <label className="block text-gray-700 text-sm font-medium mb-2">
               Time *
@@ -998,7 +1015,6 @@ export default function TaskManager() {
               />
             </div>
           </div>
-
           <div>
             <label className="block text-gray-700 text-sm font-medium mb-2">
               Repeat
@@ -1020,7 +1036,6 @@ export default function TaskManager() {
               <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
             </div>
           </div>
-
           {newTask.repeat !== "Never" && (
             <div>
               <label className="block text-gray-700 text-sm font-medium mb-2">
@@ -1039,7 +1054,6 @@ export default function TaskManager() {
               </div>
             </div>
           )}
-
           <div className="flex space-x-4 pt-4">
             <button
               onClick={handleAddTask}
@@ -1055,7 +1069,6 @@ export default function TaskManager() {
             </button>
           </div>
         </div>
-
         <div
           className="fixed bottom-0 left-0 right-0 bg-white border-gray-200 m-4"
           style={{ borderRadius: "200px" }}
@@ -1068,7 +1081,6 @@ export default function TaskManager() {
               >
                 <Home className="w-6 h-6 text-gray-400" />
               </button>
-
               <button
                 className="bg-blue-500 p-4"
                 onClick={() => setCurrentView("addTask")}
@@ -1076,7 +1088,6 @@ export default function TaskManager() {
               >
                 <Plus className="w-6 h-6 text-white" />
               </button>
-
               <button
                 className="p-4"
                 onClick={() => setCurrentView("calendar")}
@@ -1086,7 +1097,6 @@ export default function TaskManager() {
             </div>
           </div>
         </div>
-
         <div className="h-24 bg-white"></div>
       </div>
     );
@@ -1098,7 +1108,6 @@ export default function TaskManager() {
         <div className="bg-white px-6 py-8">
           <h1 className="text-3xl font-bold text-gray-900">Edit Task</h1>
         </div>
-
         <div className="px-6 py-6 space-y-6 bg-white">
           <div>
             <label className="block text-gray-700 text-sm font-medium mb-2">
@@ -1115,7 +1124,6 @@ export default function TaskManager() {
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-
           <div>
             <label className="block text-gray-700 text-sm font-medium mb-2">
               Detail *
@@ -1131,7 +1139,6 @@ export default function TaskManager() {
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
             />
           </div>
-
           <div>
             <label className="block text-gray-700 text-sm font-medium mb-2">
               Date *
@@ -1148,7 +1155,6 @@ export default function TaskManager() {
               />
             </div>
           </div>
-
           <div>
             <label className="block text-gray-700 text-sm font-medium mb-2">
               Time *
@@ -1165,7 +1171,6 @@ export default function TaskManager() {
               />
             </div>
           </div>
-
           <div>
             <label className="block text-gray-700 text-sm font-medium mb-2">
               Status
@@ -1186,7 +1191,6 @@ export default function TaskManager() {
               <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
             </div>
           </div>
-
           <div>
             <label className="block text-gray-700 text-sm font-medium mb-2">
               Repeat
@@ -1208,7 +1212,6 @@ export default function TaskManager() {
               <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
             </div>
           </div>
-
           <div className="flex space-x-4 pt-4">
             <button
               onClick={handleUpdateTask}
@@ -1227,7 +1230,6 @@ export default function TaskManager() {
             </button>
           </div>
         </div>
-
         <div
           className="fixed bottom-0 left-0 right-0 bg-white border-gray-200 m-4"
           style={{ borderRadius: "200px" }}
@@ -1241,14 +1243,12 @@ export default function TaskManager() {
               >
                 <Home className="w-6 h-6 text-white" />
               </button>
-
               <button
                 className="p-4"
                 onClick={() => setCurrentView("addTask")}
               >
                 <Plus className="w-6 h-6 text-gray-400" />
               </button>
-
               <button
                 className="p-4"
                 onClick={() => setCurrentView("calendar")}
@@ -1258,7 +1258,6 @@ export default function TaskManager() {
             </div>
           </div>
         </div>
-
         <div className="h-24 bg-white"></div>
       </div>
     );
@@ -1270,7 +1269,6 @@ export default function TaskManager() {
         <>
           <Toaster position="top-right" />
           <DeleteModal />
-
           <div className="px-6 pt-8 pb-3 flex">
             <div>
               <img
@@ -1287,7 +1285,6 @@ export default function TaskManager() {
               <p className="text-gray-600">Here all your task!</p>
             </div>
           </div>
-
           <div className="px-6 py-4">
             <div className="flex space-x-1">
               {tabs.map((tab) => (
@@ -1295,8 +1292,8 @@ export default function TaskManager() {
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === tab
-                    ? "bg-blue-500 text-white"
-                    : "text-gray-500 hover:text-gray-700"
+                      ? "bg-blue-500 text-white"
+                      : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
                   {tab}
@@ -1304,8 +1301,6 @@ export default function TaskManager() {
               ))}
             </div>
           </div>
-
-          {/* Filter สำหรับ Upcoming tab */}
           {activeTab === "Upcoming" && (
             <div className="px-6 pb-4">
               <div className="flex space-x-1">
@@ -1314,8 +1309,8 @@ export default function TaskManager() {
                     key={filter}
                     onClick={() => setUpcomingFilter(filter)}
                     className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${upcomingFilter === filter
-                      ? "bg-blue-100 text-blue-600 border border-blue-300"
-                      : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+                        ? "bg-blue-100 text-blue-600 border border-blue-300"
+                        : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
                       }`}
                   >
                     {filter}
@@ -1324,7 +1319,6 @@ export default function TaskManager() {
               </div>
             </div>
           )}
-
           <div className="px-6 py-4 space-y-4">
             {loading ? (
               <div className="text-center py-8">
@@ -1372,10 +1366,9 @@ export default function TaskManager() {
                       >
                         {task.status}
                       </span>
-
                       {task.status === "Upcoming" && (
                         <div className="flex space-x-2">
-                          <button
+                           <button
                             onClick={() => handleCompleteTask(task)}
                             className="flex items-center space-x-1 text-xs px-3 py-1 bg-green-100 text-green-600 rounded-md hover:bg-green-200 transition-colors"
                           >
@@ -1400,7 +1393,7 @@ export default function TaskManager() {
                       )}
                       {(task.status === "Completed" || task.status === "Overdue") && (
                         <div className="flex space-x-2">
-                          <button
+                           <button
                             onClick={() => handleDeleteTask(task)}
                             className="flex items-center space-x-1 text-xs px-3 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
                           >
@@ -1415,7 +1408,6 @@ export default function TaskManager() {
               ))
             )}
           </div>
-
           <div
             className="fixed bottom-0 left-0 right-0 bg-white border-gray-200 m-4"
             style={{ borderRadius: "200px" }}
@@ -1429,14 +1421,12 @@ export default function TaskManager() {
                 >
                   <Home className="w-6 h-6 text-white" />
                 </button>
-
                 <button
                   className="bg-blue-100 p-3 rounded-xl"
                   onClick={() => setCurrentView("addTask")}
                 >
                   <Plus className="w-6 h-6 text-blue-600" />
                 </button>
-
                 <button
                   className="p-4"
                   onClick={() => setCurrentView("calendar")}
@@ -1446,7 +1436,6 @@ export default function TaskManager() {
               </div>
             </div>
           </div>
-
           <div className="h-24"></div>
         </>
       ) : (
