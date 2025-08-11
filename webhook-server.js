@@ -260,37 +260,34 @@ async function handlePostback(event) {
   if (!data || !userId) return;
 
   if (data.startsWith("complete_task_")) {
-    const notificationId = data.replace("complete_task_", "");
+    // Correctly parse the new postback data format
+    const parts = data.split('_');
+    if (parts.length < 6) {
+      console.error(`[${getTimestamp()}] ❌ Invalid postback data format: ${data}`);
+      await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ เกิดข้อผิดพลาดในการประมวลผลข้อมูล กรุณาลองใหม่" }]);
+      return;
+    }
+    const parentTaskId = parts[3];
+    const notificationId = parts[5];
 
     try {
-      // Use a collection group query to find the specific notification by its ID.
-      const notificationQuery = db.collectionGroup('notifications').where(admin.firestore.FieldPath.documentId(), '==', notificationId);
-      const notificationSnapshot = await notificationQuery.get();
+      const notificationRef = db.collection("users").doc(userId).collection("tasks").doc(parentTaskId).collection("notifications").doc(notificationId);
+      const notificationDoc = await notificationRef.get();
 
-      if (notificationSnapshot.empty) {
+      if (!notificationDoc.exists) {
         await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ ไม่พบการแจ้งเตือนที่ระบุในระบบ" }]);
         return;
       }
 
-      const notificationDoc = notificationSnapshot.docs[0];
       const notificationData = notificationDoc.data();
-      const parentTaskRef = notificationDoc.ref.parent.parent;
-      const parentTaskDoc = await parentTaskRef.get();
-      const parentTaskData = parentTaskDoc.data();
-
-      // Check for user ownership to prevent unauthorized updates
-      if (parentTaskData.userId !== userId) {
-        await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ คุณไม่มีสิทธิ์ในการอัปเดตงานนี้" }]);
-        return;
-      }
 
       // Update only the individual notification document to 'Completed'
-      await notificationDoc.ref.update({
+      await notificationRef.update({
         status: "Completed",
         completedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      console.log(`[${getTimestamp()}] ✅ Notification "${parentTaskData.title}" marked as Completed`);
+      console.log(`[${getTimestamp()}] ✅ Notification "${notificationData.title}" for task "${parentTaskId}" marked as Completed`);
 
       await sendReplyMessage(event.replyToken, [{
         type: "flex",
@@ -315,7 +312,7 @@ async function handlePostback(event) {
                   {
                     type: "box", layout: "baseline", spacing: "sm", contents: [
                       { type: "text", text: "📋 ชื่องาน:", color: "#aaaaaa", size: "sm", flex: 2, },
-                      { type: "text", text: parentTaskData.title || "ไม่ระบุชื่อ", wrap: true, size: "sm", flex: 5, },
+                      { type: "text", text: notificationData.title || "ไม่ระบุชื่อ", wrap: true, size: "sm", flex: 5, },
                     ],
                   },
                   {

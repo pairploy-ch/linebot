@@ -694,10 +694,16 @@ function createTaskFlexMessage(task) {
             type: "button",
             style: "primary",
             height: "sm",
+            // action: {
+            //   type: "postback",
+            //   label: "Done",
+            //   data: `complete_task_${task.id}`,
+            //   displayText: "งานนี้เสร็จแล้ว ✅"
+            // },
             action: {
               type: "postback",
               label: "Done",
-              data: `complete_task_${task.id}`,
+              data: `complete_task_user_${task.userId}_task_${task.parentId}_notification_${task.id}`,
               displayText: "งานนี้เสร็จแล้ว ✅"
             },
             color: "#10b981"
@@ -749,13 +755,13 @@ async function checkNotifications() {
 
   try {
     const notificationsRef = db.collectionGroup('notifications');
-    
+
     // Use a collection group query to find notifications that are due
     const notificationsQuery = notificationsRef
       .where('notified', '==', false)
       .where('notificationTime', '>=', admin.firestore.Timestamp.fromDate(fiveMinutesAgo.toDate()))
       .where('notificationTime', '<=', admin.firestore.Timestamp.fromDate(now.toDate()));
-    
+
     const notificationsSnapshot = await notificationsQuery.get();
 
     if (notificationsSnapshot.empty) {
@@ -772,50 +778,50 @@ async function checkNotifications() {
       const notificationData = notificationDoc.data();
       const parentTaskRef = notificationDoc.ref.parent.parent;
       const parentTaskDoc = await parentTaskRef.get();
-      
+
       if (parentTaskDoc.exists) {
         const parentTaskData = parentTaskDoc.data();
-        
+
         const notificationTimeMoment = moment(notificationData.notificationTime.toDate()).tz('Asia/Bangkok');
-        
+
         // Final check to ensure it's not a future notification
         if (notificationTimeMoment.isSameOrBefore(now)) {
-            const flexMessage = createTaskFlexMessage({
-              ...parentTaskData,
-              ...notificationData,
-              id: notificationDoc.id,
-            });
-            
-            // Add message to queue
-            messagesToSend.push({
-                userId: parentTaskData.userId,
-                message: flexMessage
-            });
+          const flexMessage = createTaskFlexMessage({
+            ...parentTaskData,
+            ...notificationData,
+            id: notificationDoc.id,
+          });
 
-            // Update the individual notification's status in the batch
-            batch.update(notificationDoc.ref, {
-              notified: true,
-              status: 'Overdue',
-              sentAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
+          // Add message to queue
+          messagesToSend.push({
+            userId: parentTaskData.userId,
+            message: flexMessage
+          });
 
-            if (parentTaskData.repeatType === 'Never' || notificationTimeMoment.isSame(moment(parentTaskData.endDate).tz('Asia/Bangkok'), 'day')) {
-                batch.update(parentTaskRef, { status: 'Overdue' });
-            }
+          // Update the individual notification's status in the batch
+          batch.update(notificationDoc.ref, {
+            notified: true,
+            status: 'Overdue',
+            sentAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+
+          if (parentTaskData.repeatType === 'Never' || notificationTimeMoment.isSame(moment(parentTaskData.endDate).tz('Asia/Bangkok'), 'day')) {
+            batch.update(parentTaskRef, { status: 'Overdue' });
+          }
         }
       }
     }
-    
+
     // Commit the batch to update all documents
     await batch.commit();
 
     // Send messages after database updates
     for (const messageObj of messagesToSend) {
-        await sendLineMessage(messageObj.userId, messageObj.message);
+      await sendLineMessage(messageObj.userId, messageObj.message);
     }
-    
+
     console.log(`All notifications processed and sent.`);
-    
+
   } catch (error) {
     console.error('Error in checkNotifications:', error);
   }
