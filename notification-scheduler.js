@@ -747,9 +747,14 @@ async function sendLineMessage(userId, message) {
   }
 }
 
+// from linebot/notification-scheduler.js
+
 async function checkNotifications() {
   const now = moment.tz('Asia/Bangkok');
   const fiveMinutesAgo = now.clone().subtract(5, 'minutes');
+
+  console.log(`\n[${getTimestamp()}] ⏰ 🔄 CRON JOB TRIGGERED - Running scheduled notification check...`);
+  console.log(`[${getTimestamp()}] 🔍 Looking for notifications due between ${fiveMinutesAgo.format('YYYY-MM-DD HH:mm:ss')} and ${now.format('YYYY-MM-DD HH:mm:ss')}`);
 
   try {
     const notificationsRef = db.collectionGroup('notifications');
@@ -782,23 +787,26 @@ async function checkNotifications() {
 
         const notificationTimeMoment = moment(notificationData.notificationTime.toDate()).tz('Asia/Bangkok');
 
-        // Final check to ensure it's not a future notification
         if (notificationTimeMoment.isSameOrBefore(now)) {
+          // Add detailed logging for the data being used to build the message
+          console.log(`[${getTimestamp()}] 📋 Data for new message:`);
+          console.log(`[${getTimestamp()}]   - userId: ${parentTaskData.userId}`);
+          console.log(`[${getTimestamp()}]   - parentId: ${parentTaskDoc.id}`);
+          console.log(`[${getTimestamp()}]   - notificationId: ${notificationDoc.id}`);
+
           const flexMessage = createTaskFlexMessage({
             ...parentTaskData,
             ...notificationData,
             id: notificationDoc.id,
-            parentId: parentTaskDoc.id,        // <-- add this
-            userId: parentTaskData.userId      // <-- ensure present
+            parentId: parentTaskDoc.id,
+            userId: parentTaskData.userId,
           });
 
-          // Add message to queue
           messagesToSend.push({
             userId: parentTaskData.userId,
             message: flexMessage
           });
 
-          // Update the individual notification's status in the batch
           batch.update(notificationDoc.ref, {
             notified: true,
             status: 'Overdue',
@@ -812,20 +820,19 @@ async function checkNotifications() {
       }
     }
 
-    // Commit the batch to update all documents
     await batch.commit();
 
-    // Send messages after database updates
     for (const messageObj of messagesToSend) {
       await sendLineMessage(messageObj.userId, messageObj.message);
     }
 
-    console.log(`All notifications processed and sent.`);
+    console.log(`[${getTimestamp()}] ✅ All notifications processed and sent.`);
 
   } catch (error) {
-    console.error('Error in checkNotifications:', error);
+    console.error(`[${getTimestamp()}] ❌ Error in checkNotifications:`, error);
   }
 }
+
 
 const startupTime = getTimestamp();
 console.log(`[${startupTime}] ⏰ Starting notification scheduler...`);
