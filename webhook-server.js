@@ -282,8 +282,8 @@ app.post("/webhook", (req, res) => {
         const intent = await classifyMessageWithAI(aiPrompt);
 
         if (intent === 'create_task') {
-          createTaskWithAI(aiPrompt)
-          const create_task_detail_reply = { type: "text", text: `your message is create task, and the detail is: ${create_task_detail_reply}` };
+          const create_task_outcome = await createTaskWithAI(aiPrompt)
+          const create_task_detail_reply = { type: "text", text: `your message is create task, and the detail is: ${create_task_outcome}` };
           await sendReplyMessage(event.replyToken, [create_task_detail_reply]);
         }
 
