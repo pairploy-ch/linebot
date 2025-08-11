@@ -253,6 +253,8 @@ async function createTaskWithAI(prompt) {
 //   }
 // }
 
+// from linebot/webhook-server.js
+
 async function handlePostback(event) {
   const data = event.postback?.data;
   const userId = event.source?.userId;
@@ -261,32 +263,43 @@ async function handlePostback(event) {
 
   if (data.startsWith("complete_task_")) {
     const parts = data.split('_');
-    if (parts.length < 6) {
+    // Check if the postback data has the correct number of parts.
+    // Example format: "complete_task_user_U1234_task_T5678_notification_N9012"
+    if (parts.length < 8 || parts[2] !== 'user' || parts[4] !== 'task' || parts[6] !== 'notification') {
       console.error(`[${getTimestamp()}] ❌ Invalid postback data format: ${data}`);
       await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ เกิดข้อผิดพลาดในการประมวลผลข้อมูล กรุณาลองใหม่" }]);
       return;
     }
-    const parentTaskId = parts[3];
-    const notificationId = parts[5];
+
+    // Extract the IDs from the correct positions in the array
+    const postbackUserId = parts[3];
+    const parentTaskId = parts[5];
+    const notificationId = parts[7];
+
+    // Security check: Ensure the user who sent the postback is the owner of the task.
+    if (postbackUserId !== userId) {
+      await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ คุณไม่มีสิทธิ์ในการอัปเดตงานนี้" }]);
+      console.log(`[${getTimestamp()}] 🚫 Unauthorized postback attempt by user: ${userId}`);
+      return;
+    }
 
     try {
-      const notificationRef = db.collection("users").doc(userId).collection("tasks").doc(parentTaskId).collection("notifications").doc(notificationId);
+      // Reference the specific notification document using all three IDs
+      const notificationRef = db.collection("users").doc(postbackUserId).collection("tasks").doc(parentTaskId).collection("notifications").doc(notificationId);
       const notificationDoc = await notificationRef.get();
 
       if (!notificationDoc.exists) {
         await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ ไม่พบการแจ้งเตือนที่ระบุในระบบ" }]);
+        console.log(`[${getTimestamp()}] ❌ Notification not found in Firestore: ${notificationId}`);
         return;
       }
 
+      // Get the parent task's data to use in the reply message
       const parentTaskRef = notificationDoc.ref.parent.parent;
       const parentTaskDoc = await parentTaskRef.get();
       const parentTaskData = parentTaskDoc.data();
 
-      if (parentTaskData.userId !== userId) {
-        await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ คุณไม่มีสิทธิ์ในการอัปเดตงานนี้" }]);
-        return;
-      }
-
+      // Update only the individual notification document to 'Completed'
       await notificationRef.update({
         status: "Completed",
         completedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -294,48 +307,12 @@ async function handlePostback(event) {
 
       console.log(`[${getTimestamp()}] ✅ Notification "${parentTaskData.title}" for task "${parentTaskId}" marked as Completed`);
 
-      // await sendReplyMessage(event.replyToken, [{
-      //   type: "flex",
-      //   altText: "งานถูกอัปเดตเป็นเสร็จแล้วเรียบร้อย",
-      //   contents: {
-      //     type: "bubble",
-      //     header: {
-      //       type: "box",
-      //       layout: "vertical",
-      //       contents: [
-      //         { type: "text", text: "งานเสร็จเรียบร้อยแล้ว!", weight: "bold", color: "#ffffff", size: "lg", align: "center" },
-      //       ],
-      //       backgroundColor: "#10b981",
-      //       paddingAll: "20px",
-      //     },
-      //     body: {
-      //       type: "box",
-      //       layout: "vertical",
-      //       contents: [
-      //         {
-      //           type: "box", layout: "vertical", margin: "md", spacing: "sm", contents: [
-      //             {
-      //               type: "box", layout: "baseline", spacing: "sm", contents: [
-      //                 { type: "text", text: "📋 ชื่องาน:", color: "#aaaaaa", size: "sm", flex: 2, },
-      //                 { type: "text", text: parentTaskData.title || "ไม่ระบุชื่อ", wrap: true, size: "sm", flex: 5, },
-      //               ],
-      //             },
-      //             {
-      //               type: "box", layout: "baseline", spacing: "sm", contents: [
-      //                 { type: "text", text: "✅ สถานะ:", color: "#aaaaaa", size: "sm", flex: 2, },
-      //                 { type: "text", text: "การแจ้งเตือนนี้เสร็จสิ้นแล้ว", wrap: true, size: "sm", flex: 5, color: "#059669", },
-      //               ],
-      //             },
-      //           ],
-      //         },
-      //       ],
-      //       paddingAll: "20px",
-      //     },
-      //     styles: { body: { backgroundColor: "#F0F9F3" } },
-      //   },
-      // }]);
+      // Send a confirmation message to the user
+      await sendReplyMessage(event.replyToken, [{
+        type: "text",
+        text: `✅ Task "${parentTaskData.title}" has been marked as completed.`
+      }]);
 
-      
       console.log(`[${getTimestamp()}] 🔥 Postback complete_task processed for notification: ${notificationId}`);
     } catch (error) {
       console.error(`[${getTimestamp()}] ❌ Error processing complete_task:`, error);
@@ -344,6 +321,7 @@ async function handlePostback(event) {
     return;
   }
 }
+
 
 
 
