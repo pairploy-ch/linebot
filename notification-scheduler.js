@@ -749,13 +749,17 @@ async function sendLineMessage(userId, message) {
 
 // from linebot/notification-scheduler.js
 
+// from linebot/notification-scheduler.js
+
 async function checkNotifications() {
   const now = moment.tz('Asia/Bangkok');
   const fiveMinutesAgo = now.clone().subtract(5, 'minutes');
 
   console.log(`\n[${getTimestamp()}] ⏰ 🔄 CRON JOB TRIGGERED - Running scheduled notification check...`);
+  console.log(`[${getTimestamp()}] 🌍 Current UTC time: ${moment.utc().format('YYYY-MM-DD HH:mm:ss')} UTC`);
+  console.log(`[${getTimestamp()}] 🇹🇭 Current Bangkok time: ${now.format('YYYY-MM-DD HH:mm:ss')} (Asia/Bangkok)`);
   console.log(`[${getTimestamp()}] 🔍 Looking for notifications due between ${fiveMinutesAgo.format('YYYY-MM-DD HH:mm:ss')} and ${now.format('YYYY-MM-DD HH:mm:ss')}`);
-
+  
   try {
     const notificationsRef = db.collectionGroup('notifications');
 
@@ -769,15 +773,17 @@ async function checkNotifications() {
 
     if (notificationsSnapshot.empty) {
       console.log('No notifications found within the window.');
+      console.log(`[${getTimestamp()}] ✅ Notification check finished with no tasks found.`);
       return;
     }
 
-    console.log(`Found ${notificationsSnapshot.size} notification(s) ready to send.`);
+    console.log(`[${getTimestamp()}] 📋 Found ${notificationsSnapshot.size} notification(s) ready to send.`);
 
     const batch = db.batch();
     const messagesToSend = [];
 
     for (const notificationDoc of notificationsSnapshot.docs) {
+      console.log(`[${getTimestamp()}] ➡️ Processing notification document ID: ${notificationDoc.id}`);
       const notificationData = notificationDoc.data();
       const parentTaskRef = notificationDoc.ref.parent.parent;
       const parentTaskDoc = await parentTaskRef.get();
@@ -785,9 +791,13 @@ async function checkNotifications() {
       if (parentTaskDoc.exists) {
         const parentTaskData = parentTaskDoc.data();
 
-        const notificationTimeMoment = moment(notificationData.notificationTime.toDate()).tz('Asia/Bangkok');
+        const notificationTimeMoment = moment(notificationData.notificationTime.toDate());
+        console.log(`[${getTimestamp()}] 🕒 Notification time from Firestore: ${notificationTimeMoment.format()} (This is a Moment.js object, assuming local time if not specified)`);
+        console.log(`[${getTimestamp()}] 🕒 Notification time in UTC: ${notificationTimeMoment.utc().format('YYYY-MM-DD HH:mm:ss')} UTC`);
+        console.log(`[${getTimestamp()}] 🕒 Notification time in Bangkok: ${notificationTimeMoment.tz('Asia/Bangkok').format('YYYY-MM-DD HH:mm:ss')} (Asia/Bangkok)`);
 
         if (notificationTimeMoment.isSameOrBefore(now)) {
+          console.log(`[${getTimestamp()}] ✅ Notification is due. Preparing to send message.`);
           // Add detailed logging for the data being used to build the message
           console.log(`[${getTimestamp()}] 📋 Data for new message:`);
           console.log(`[${getTimestamp()}]   - userId: ${parentTaskData.userId}`);
@@ -801,7 +811,7 @@ async function checkNotifications() {
             parentId: parentTaskDoc.id,
             userId: parentTaskData.userId,
           });
-
+          
           messagesToSend.push({
             userId: parentTaskData.userId,
             message: flexMessage
@@ -812,16 +822,22 @@ async function checkNotifications() {
             status: 'Overdue',
             sentAt: admin.firestore.FieldValue.serverTimestamp(),
           });
+          console.log(`[${getTimestamp()}] 📝 Added batch update for notification ${notificationDoc.id} to mark it as notified.`);
 
           if (parentTaskData.repeatType === 'Never' || notificationTimeMoment.isSame(moment(parentTaskData.endDate).tz('Asia/Bangkok'), 'day')) {
             batch.update(parentTaskRef, { status: 'Overdue' });
+            console.log(`[${getTimestamp()}] 📝 Added batch update for parent task ${parentTaskDoc.id} to mark it as Overdue.`);
           }
+        } else {
+            console.log(`[${getTimestamp()}] ⏳ Notification is not yet due. Skipping message.`);
         }
       }
     }
 
+    console.log(`[${getTimestamp()}] 💾 Committing batch of ${messagesToSend.length} database updates.`);
     await batch.commit();
 
+    console.log(`[${getTimestamp()}] 📤 Sending ${messagesToSend.length} message(s)...`);
     for (const messageObj of messagesToSend) {
       await sendLineMessage(messageObj.userId, messageObj.message);
     }
@@ -830,8 +846,10 @@ async function checkNotifications() {
 
   } catch (error) {
     console.error(`[${getTimestamp()}] ❌ Error in checkNotifications:`, error);
+    console.error(`[${getTimestamp()}] ❌ Error stack:`, error.stack);
   }
 }
+
 
 
 const startupTime = getTimestamp();
