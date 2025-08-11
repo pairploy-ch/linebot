@@ -2,16 +2,14 @@ const express = require("express");
 const admin = require("firebase-admin");
 const path = require("path");
 const openai = require("openai");
-const moment = require("moment-timezone");
-const fetch = require('node-fetch');
 
 const app = express();
 const port = process.env.PORT || 3001;
 
-// Load environment variables
+// Load environment variables for AI and LINE
 require('dotenv').config();
 
-// Securely load Firebase credentials
+// Securely load Firebase credentials from environment variable
 const serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG_JSON);
 serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
 
@@ -39,14 +37,27 @@ app.use((req, res, next) => {
   res.header("Access-Control-Allow-Methods", "*");
   next();
 });
+
 app.use(express.json());
 
+
 function getTimestamp() {
-  return moment().tz('Asia/Singapore').format('DD/MM/YYYY HH:mm:ss');
+  return new Date().toLocaleString("th-TH", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
+
 
 async function sendReplyMessage(replyToken, messages) {
   try {
+    const fetch = (await import("node-fetch")).default;
+
     const response = await fetch("https://api.line.me/v2/bot/message/reply", {
       method: "POST",
       headers: {
@@ -73,6 +84,7 @@ async function sendReplyMessage(replyToken, messages) {
   }
 }
 
+
 async function classifyMessageWithAI(prompt) {
   const classificationPrompt = `
     You are an intent classifier for a personal assistant. Your job is to determine the user's intent from the message and respond with a single, specific category code. Do not include any other text, explanation, or punctuation.
@@ -94,6 +106,7 @@ async function classifyMessageWithAI(prompt) {
     Your response (single category code only):
   `;
 
+
   const response = await openaiClient.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [{ role: "user", content: classificationPrompt }],
@@ -106,9 +119,9 @@ async function classifyMessageWithAI(prompt) {
   return category;
 }
 
-async function extractTaskDetailsWithAI(userMessage) {
-  const system_prompt = `
-    รับคำสั่งสร้าง reminder แปลงเป็น JSON
+async function createTaskWithAI(prompt) {
+  const analyzeCreateTaskPrompt = `
+        รับคำสั่งสร้าง reminder แปลงเป็น JSON
 
     {
       "intent": "add_reminder",
@@ -119,7 +132,7 @@ async function extractTaskDetailsWithAI(userMessage) {
     }
 
     กติกา:
-    - “พรุ่งนี้”, “วันนี้” → แปลงเป็นวันที่จริง today date is ${moment().tz('Asia/Singapore').format("YYYY-MM-DD HH:mm")}
+    - “พรุ่งนี้”, “วันนี้” → แปลงเป็นวันที่จริง today date is Tuesday 23/7/2568 11.00
     - “ทุกวัน/พุธ” → set repeat ให้ตรง
     - ไม่มีคำซ้ำ → repeat = once
     ตอบกลับเป็น JSON เท่านั้น ห้ามมีคำอธิบาย
@@ -131,21 +144,23 @@ async function extractTaskDetailsWithAI(userMessage) {
 
     ถ้าไม่มีเวลาบอก > 8.00
     ถ้าไม่มีวันที่บอก > วันนี้
+
+    User message: "${prompt}"
   `;
 
+
   const response = await openaiClient.chat.completions.create({
-    model: "gpt-4o",
-    messages: [
-      { role: "system", content: system_prompt },
-      { role: "user", content: userMessage }
-    ],
-    response_format: { type: "json_object" }
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: analyzeCreateTaskPrompt }],
+    max_tokens: 10,
+    temperature: 0,
   });
 
-  const rawContent = response.choices[0].message.content;
-  console.log(`[${getTimestamp()}] 🤖 AI Response: ${rawContent}`);
-  return JSON.parse(rawContent);
+  const text_file_analysis = response.choices[0].message.content.trim();
+  console.log(`[${getTimestamp()}] 🤖 AI Create Task Analysis: ${text_file_analysis}`);
+  return text_file_analysis;
 }
+
 
 
 async function handlePostback(event) {
@@ -173,18 +188,59 @@ async function handlePostback(event) {
         return;
       }
 
-      const notificationsQuery = await db.collection("tasks").doc(taskId).collection("notifications").get();
-      if (!notificationsQuery.empty) {
-        const notificationRef = notificationsQuery.docs[0].ref;
-        await notificationRef.update({
-          status: "Completed",
-          completedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-      }
+      await taskRef.update({
+        status: "Completed",
+        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        completedFromLine: true,
+        repeat: "Never",
+        repeatStopped: true,
+        repeatStoppedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
-      console.log(`[${getTimestamp()}] ✅ Task "${taskData.title}" marked as Completed`);
-      await sendReplyMessage(event.replyToken, [{ type: "text", text: `✅ งาน "${taskData.title}" ถูกทำเครื่องหมายว่าเสร็จสิ้นแล้ว` }]);
+      console.log(`[${getTimestamp()}] ✅ Task "${taskData.title}" marked as Completed and repeat stopped`);
 
+      await sendReplyMessage(event.replyToken, [{
+        type: "flex",
+        altText: "งานถูกอัปเดตเป็นเสร็จแล้วเรียบร้อย",
+        contents: {
+          type: "bubble",
+          header: {
+            type: "box",
+            layout: "vertical",
+            contents: [
+              { type: "text", text: "งานเสร็จเรียบร้อยแล้ว!", weight: "bold", color: "#ffffff", size: "lg", align: "center" },
+            ],
+            backgroundColor: "#10b981",
+            paddingAll: "20px",
+          },
+          body: {
+            type: "box",
+            layout: "vertical",
+            contents: [
+              {
+                type: "box", layout: "vertical", margin: "md", spacing: "sm", contents: [
+                  {
+                    type: "box", layout: "baseline", spacing: "sm", contents: [
+                      { type: "text", text: "📋 ชื่องาน:", color: "#aaaaaa", size: "sm", flex: 2, },
+                      { type: "text", text: taskData.title || "ไม่ระบุชื่อ", wrap: true, size: "sm", flex: 5, },
+                    ],
+                  },
+                  {
+                    type: "box", layout: "baseline", spacing: "sm", contents: [
+                      { type: "text", text: "✅ สถานะ:", color: "#aaaaaa", size: "sm", flex: 2, },
+                      { type: "text", text: "งานเสร็จสิ้นแล้ว", wrap: true, size: "sm", flex: 5, color: "#059669", },
+                    ],
+                  },
+                ],
+              },
+            ],
+            paddingAll: "20px",
+          },
+          styles: { body: { backgroundColor: "#F0F9F3" } },
+        },
+      }]);
+      console.log(`[${getTimestamp()}] 🔥 Postback complete_task processed: ${taskId}`);
     } catch (error) {
       console.error(`[${getTimestamp()}] ❌ Error processing complete_task:`, error);
       await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ เกิดข้อผิดพลาดในการอัปเดตงาน กรุณาลองใหม่" }]);
@@ -206,6 +262,7 @@ app.post("/webhook", (req, res) => {
       if (event.type === "message" && event.message?.type === "text") {
         const messageText = event.message.text;
 
+        // --- Corrected code for message handling ---
         if (!messageText.toLowerCase().startsWith("alin") && !messageText.startsWith("อลิน")) {
           const replyMessage = { type: "text", text: `ได้รับข้อความ: ${messageText} 🤖\n\nใช้งานผ่านเว็บแอป: https://your-domain.com` };
           await sendReplyMessage(event.replyToken, [replyMessage]);
@@ -221,42 +278,22 @@ app.post("/webhook", (req, res) => {
           return;
         }
 
+        // --- First Layer AI Classification ---
         const intent = await classifyMessageWithAI(aiPrompt);
 
-        switch (intent) {
-          case 'create_task':
-            // Second layer of AI processing
-            const taskDetails = await extractTaskDetailsWithAI(aiPrompt);
-            // Send the JSON output from the second layer back to the user
-            await sendReplyMessage(event.replyToken, [{ type: "text", text: JSON.stringify(taskDetails, null, 2) }]);
-            break;
-          case 'read_task':
-            await sendReplyMessage(event.replyToken, [{ type: "text", text: "ฟังก์ชันการดูงานยังอยู่ระหว่างการพัฒนา" }]);
-            break;
-          case 'edit_task':
-            await sendReplyMessage(event.replyToken, [{ type: "text", text: "ฟังก์ชันการแก้ไขงานยังอยู่ระหว่างการพัฒนา" }]);
-            break;
-          case 'delete_task':
-            await sendReplyMessage(event.replyToken, [{ type: "text", text: "ฟังก์ชันการลบงานยังอยู่ระหว่างการพัฒนา" }]);
-            break;
-          case 'complete_task':
-            await sendReplyMessage(event.replyToken, [{ type: "text", text: "ฟังก์ชันการทำเครื่องหมายว่างานเสร็จสิ้นยังอยู่ระหว่างการพัฒนา" }]);
-            break;
-          case 'health_query':
-            await sendReplyMessage(event.replyToken, [{ type: "text", text: "ฟังก์ชันการสอบถามสุขภาพยังอยู่ระหว่างการพัฒนา" }]);
-            break;
-          case 'weather_check':
-            await sendReplyMessage(event.replyToken, [{ type: "text", text: "ฟังก์ชันการตรวจสอบสภาพอากาศยังอยู่ระหว่างการพัฒนา" }]);
-            break;
-          case 'general_search':
-            await sendReplyMessage(event.replyToken, [{ type: "text", text: "ฟังก์ชันการค้นหาทั่วไปยังอยู่ระหว่างการพัฒนา" }]);
-            break;
-          case 'create_content':
-            await sendReplyMessage(event.replyToken, [{ type: "text", text: "ฟังก์ชันการสร้างเนื้อหายังอยู่ระหว่างการพัฒนา" }]);
-            break;
-          default:
-            await sendReplyMessage(event.replyToken, [{ type: "text", text: "ขออภัย อลินยังไม่สามารถจัดการคำสั่งนี้ได้" }]);
+        if (intent === 'create_task') {
+          createTaskWithAI(aiPrompt)
+          const create_task_detail_reply = { type: "text", text: `your message is create task, and the detail is: ${create_task_detail_reply}` };
+          await sendReplyMessage(event.replyToken, [create_task_detail_reply]);
         }
+
+        else {
+          // Reply with the classified intent
+          const replyMessage = { type: "text", text: `ประเภทข้อความที่ตรวจพบ: ${intent}` };
+          await sendReplyMessage(event.replyToken, [replyMessage]);
+        }
+
+
 
       } else if (event.type === "postback") {
         await handlePostback(event);
