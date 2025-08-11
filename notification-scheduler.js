@@ -737,6 +737,7 @@ async function sendLineMessage(userId, message) {
       const errorText = await response.text();
       console.error(`[${errorTime}] ❌ Failed to send flex message:`, errorText);
       return false;
+
     }
   } catch (error) {
     const errorTime = getTimestamp();
@@ -786,6 +787,8 @@ async function checkNotifications() {
             ...parentTaskData,
             ...notificationData,
             id: notificationDoc.id,
+            parentId: parentTaskDoc.id,        // <-- add this
+            userId: parentTaskData.userId      // <-- ensure present
           });
 
           // Add message to queue

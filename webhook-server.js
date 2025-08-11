@@ -294,46 +294,48 @@ async function handlePostback(event) {
 
       console.log(`[${getTimestamp()}] ✅ Notification "${parentTaskData.title}" for task "${parentTaskId}" marked as Completed`);
 
-      await sendReplyMessage(event.replyToken, [{
-        type: "flex",
-        altText: "งานถูกอัปเดตเป็นเสร็จแล้วเรียบร้อย",
-        contents: {
-          type: "bubble",
-          header: {
-            type: "box",
-            layout: "vertical",
-            contents: [
-              { type: "text", text: "งานเสร็จเรียบร้อยแล้ว!", weight: "bold", color: "#ffffff", size: "lg", align: "center" },
-            ],
-            backgroundColor: "#10b981",
-            paddingAll: "20px",
-          },
-          body: {
-            type: "box",
-            layout: "vertical",
-            contents: [
-              {
-                type: "box", layout: "vertical", margin: "md", spacing: "sm", contents: [
-                  {
-                    type: "box", layout: "baseline", spacing: "sm", contents: [
-                      { type: "text", text: "📋 ชื่องาน:", color: "#aaaaaa", size: "sm", flex: 2, },
-                      { type: "text", text: parentTaskData.title || "ไม่ระบุชื่อ", wrap: true, size: "sm", flex: 5, },
-                    ],
-                  },
-                  {
-                    type: "box", layout: "baseline", spacing: "sm", contents: [
-                      { type: "text", text: "✅ สถานะ:", color: "#aaaaaa", size: "sm", flex: 2, },
-                      { type: "text", text: "การแจ้งเตือนนี้เสร็จสิ้นแล้ว", wrap: true, size: "sm", flex: 5, color: "#059669", },
-                    ],
-                  },
-                ],
-              },
-            ],
-            paddingAll: "20px",
-          },
-          styles: { body: { backgroundColor: "#F0F9F3" } },
-        },
-      }]);
+      // await sendReplyMessage(event.replyToken, [{
+      //   type: "flex",
+      //   altText: "งานถูกอัปเดตเป็นเสร็จแล้วเรียบร้อย",
+      //   contents: {
+      //     type: "bubble",
+      //     header: {
+      //       type: "box",
+      //       layout: "vertical",
+      //       contents: [
+      //         { type: "text", text: "งานเสร็จเรียบร้อยแล้ว!", weight: "bold", color: "#ffffff", size: "lg", align: "center" },
+      //       ],
+      //       backgroundColor: "#10b981",
+      //       paddingAll: "20px",
+      //     },
+      //     body: {
+      //       type: "box",
+      //       layout: "vertical",
+      //       contents: [
+      //         {
+      //           type: "box", layout: "vertical", margin: "md", spacing: "sm", contents: [
+      //             {
+      //               type: "box", layout: "baseline", spacing: "sm", contents: [
+      //                 { type: "text", text: "📋 ชื่องาน:", color: "#aaaaaa", size: "sm", flex: 2, },
+      //                 { type: "text", text: parentTaskData.title || "ไม่ระบุชื่อ", wrap: true, size: "sm", flex: 5, },
+      //               ],
+      //             },
+      //             {
+      //               type: "box", layout: "baseline", spacing: "sm", contents: [
+      //                 { type: "text", text: "✅ สถานะ:", color: "#aaaaaa", size: "sm", flex: 2, },
+      //                 { type: "text", text: "การแจ้งเตือนนี้เสร็จสิ้นแล้ว", wrap: true, size: "sm", flex: 5, color: "#059669", },
+      //               ],
+      //             },
+      //           ],
+      //         },
+      //       ],
+      //       paddingAll: "20px",
+      //     },
+      //     styles: { body: { backgroundColor: "#F0F9F3" } },
+      //   },
+      // }]);
+
+      
       console.log(`[${getTimestamp()}] 🔥 Postback complete_task processed for notification: ${notificationId}`);
     } catch (error) {
       console.error(`[${getTimestamp()}] ❌ Error processing complete_task:`, error);
