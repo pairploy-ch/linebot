@@ -255,18 +255,26 @@ async function createTaskWithAI(prompt) {
 
 // from linebot/webhook-server.js
 
+// from linebot/webhook-server.js
+
 async function handlePostback(event) {
+  console.log(`[${getTimestamp()}] 🚀 Starting handlePostback function...`);
   const data = event.postback?.data;
   const userId = event.source?.userId;
+  console.log(`[${getTimestamp()}] ➡️  Received postback data: ${data}`);
+  console.log(`[${getTimestamp()}] ➡️  Received user ID: ${userId}`);
 
-  if (!data || !userId) return;
+  if (!data || !userId) {
+    console.log(`[${getTimestamp()}] ⚠️  Data or user ID is missing. Exiting.`);
+    return;
+  }
 
   if (data.startsWith("complete_task_")) {
     const parts = data.split('_');
-    // Check if the postback data has the correct number of parts.
-    // Example format: "complete_task_user_U1234_task_T5678_notification_N9012"
+    console.log(`[${getTimestamp()}] 🔍 Split postback data into parts: ${JSON.stringify(parts)}`);
+
     if (parts.length < 8 || parts[2] !== 'user' || parts[4] !== 'task' || parts[6] !== 'notification') {
-      console.error(`[${getTimestamp()}] ❌ Invalid postback data format: ${data}`);
+      console.error(`[${getTimestamp()}] ❌ Invalid postback data format. Expected at least 8 parts with specific keywords. Data received: ${data}`);
       await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ เกิดข้อผิดพลาดในการประมวลผลข้อมูล กรุณาลองใหม่" }]);
       return;
     }
@@ -276,25 +284,32 @@ async function handlePostback(event) {
     const parentTaskId = parts[5];
     const notificationId = parts[7];
 
+    console.log(`[${getTimestamp()}] ✅ Successfully parsed IDs:`);
+    console.log(`[${getTimestamp()}]    - User ID: ${postbackUserId}`);
+    console.log(`[${getTimestamp()}]    - Parent Task ID: ${parentTaskId}`);
+    console.log(`[${getTimestamp()}]    - Notification ID: ${notificationId}`);
+
     // Security check: Ensure the user who sent the postback is the owner of the task.
     if (postbackUserId !== userId) {
+      console.log(`[${getTimestamp()}] 🚫 Unauthorized postback attempt. postbackUserId: ${postbackUserId}, actual userId: ${userId}`);
       await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ คุณไม่มีสิทธิ์ในการอัปเดตงานนี้" }]);
-      console.log(`[${getTimestamp()}] 🚫 Unauthorized postback attempt by user: ${userId}`);
       return;
     }
 
     try {
       // Reference the specific notification document using all three IDs
+      const notificationPath = `users/${postbackUserId}/tasks/${parentTaskId}/notifications/${notificationId}`;
+      console.log(`[${getTimestamp()}] 🔗 Attempting to get document at path: ${notificationPath}`);
       const notificationRef = db.collection("users").doc(postbackUserId).collection("tasks").doc(parentTaskId).collection("notifications").doc(notificationId);
       const notificationDoc = await notificationRef.get();
 
       if (!notificationDoc.exists) {
         await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ ไม่พบการแจ้งเตือนที่ระบุในระบบ" }]);
-        console.log(`[${getTimestamp()}] ❌ Notification not found in Firestore: ${notificationId}`);
+        console.error(`[${getTimestamp()}] ❌ Notification not found in Firestore. Path: ${notificationPath}`);
         return;
       }
 
-      // Get the parent task's data to use in the reply message
+      console.log(`[${getTimestamp()}] ✅ Found notification document. Updating status...`);
       const parentTaskRef = notificationDoc.ref.parent.parent;
       const parentTaskDoc = await parentTaskRef.get();
       const parentTaskData = parentTaskDoc.data();
@@ -305,7 +320,7 @@ async function handlePostback(event) {
         completedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      console.log(`[${getTimestamp()}] ✅ Notification "${parentTaskData.title}" for task "${parentTaskId}" marked as Completed`);
+      console.log(`[${getTimestamp()}] ✅ Notification "${parentTaskData.title}" for task "${parentTaskId}" status updated to Completed`);
 
       // Send a confirmation message to the user
       await sendReplyMessage(event.replyToken, [{
@@ -313,14 +328,18 @@ async function handlePostback(event) {
         text: `✅ Task "${parentTaskData.title}" has been marked as completed.`
       }]);
 
-      console.log(`[${getTimestamp()}] 🔥 Postback complete_task processed for notification: ${notificationId}`);
+      console.log(`[${getTimestamp()}] 🔥 Postback complete_task processed successfully for notification: ${notificationId}`);
     } catch (error) {
       console.error(`[${getTimestamp()}] ❌ Error processing complete_task:`, error);
+      console.error(`[${getTimestamp()}] ❌ Error stack:`, error.stack);
       await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ เกิดข้อผิดพลาดในการอัปเดตงาน กรุณาลองใหม่" }]);
     }
     return;
   }
+
+  console.log(`[${getTimestamp()}] 🏁 Finished processing postback event.`);
 }
+
 
 
 
