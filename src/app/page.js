@@ -223,12 +223,12 @@ export default function TaskManager() {
       </div>
     );
   };
-  
+
   const handleDeleteTask = async (task) => {
     setTaskToDelete(task);
     setShowDeleteModal(true);
   };
-  
+
   const deleteSingleNotification = async () => {
     try {
       await deleteDoc(doc(db, "tasks", taskToDelete.parentId, "notifications", taskToDelete.id));
@@ -249,10 +249,10 @@ export default function TaskManager() {
       subcollectionSnapshot.docs.forEach(subDoc => {
         batch.delete(subDoc.ref);
       });
-      
+
       batch.delete(parentTaskRef);
       await batch.commit();
-      
+
       toast.success("ลบงานทั้งหมดสำเร็จแล้ว!");
     } catch (error) {
       console.error("ลบงานทั้งหมดล้มเหลว:", error);
@@ -264,16 +264,16 @@ export default function TaskManager() {
     if (!taskToDelete) return;
 
     if (type === 'single') {
-        await deleteSingleNotification();
+      await deleteSingleNotification();
     } else if (type === 'all') {
-        await deleteAllOccurrences();
+      await deleteAllOccurrences();
     }
 
     setShowDeleteModal(false);
     setTaskToDelete(null);
     setDeleteType(null);
   };
-  
+
   const handleCompleteTask = async (task) => {
     try {
       const notificationRef = doc(db, "tasks", task.parentId, "notifications", task.id);
@@ -286,7 +286,7 @@ export default function TaskManager() {
       toast.error("Failed to complete task.");
     }
   };
-  
+
   const handleEditTask = (task) => {
     let dateValue = "";
     let timeValue = "";
@@ -310,22 +310,22 @@ export default function TaskManager() {
       toast.error("กรุณาใส่ชื่อ task");
       return;
     }
-  
+
     try {
       const parentTaskRef = doc(db, "tasks", editingTask.parentId);
       const notificationRef = doc(db, "tasks", editingTask.parentId, "notifications", editingTask.id);
-  
+
       await updateDoc(parentTaskRef, {
         title: editingTask.title,
         detail: editingTask.detail,
         updatedAt: Timestamp.now(),
       });
-  
+
       await updateDoc(notificationRef, {
         notificationTime: Timestamp.fromDate(new Date(`${editingTask.date}T${editingTask.time}`)),
         status: editingTask.status,
       });
-  
+
       setCurrentView("home");
       setEditingTask(null);
       toast.success("อัพเดท task สำเร็จแล้ว!");
@@ -334,20 +334,20 @@ export default function TaskManager() {
       toast.error("อัพเดท task ล้มเหลว");
     }
   };
-  
+
   const formatDate = (dateValue, options = {}) => {
     if (!dateValue) return "No date";
-  
+
     let date;
     if (dateValue instanceof Timestamp) {
       date = dateValue.toDate();
     } else {
       date = new Date(dateValue);
     }
-  
+
     try {
       if (isNaN(date.getTime())) return "Invalid Date";
-  
+
       return date.toLocaleString("th-TH", {
         dateStyle: "medium",
         timeStyle: "short",
@@ -357,12 +357,12 @@ export default function TaskManager() {
       return "Invalid Date";
     }
   };
-  
+
   const formatDateTime = (date, time) => {
     if (!date || !time) return "";
-  
+
     const dateTime = new Date(`${date}T${time}`);
-  
+
     const options = {
       year: "numeric",
       month: "long",
@@ -373,11 +373,11 @@ export default function TaskManager() {
       hour12: true,
       timeZone: "Asia/Bangkok",
     };
-  
+
     const formatted = dateTime.toLocaleDateString("en-US", options);
     return `${formatted} UTC+7`;
   };
-  
+
   // UPDATED: Fetches all notifications using a Collection Group query
   const fetchTasks = async () => {
     try {
@@ -386,21 +386,21 @@ export default function TaskManager() {
         setTasks([]);
         return;
       }
-  
+
       const tasksData = [];
       const notificationsQuery = query(
         collectionGroup(db, 'notifications'),
         where('userId', '==', session.lineUserId),
         orderBy('notificationTime', 'desc')
       );
-  
+
       const notificationsSnapshot = await getDocs(notificationsQuery);
-  
+
       for (const notificationDoc of notificationsSnapshot.docs) {
         const notificationData = notificationDoc.data();
         const parentTaskRef = notificationDoc.ref.parent.parent;
         const parentTaskDoc = await getDoc(parentTaskRef);
-  
+
         if (parentTaskDoc.exists()) {
           const parentData = parentTaskDoc.data();
           tasksData.push({
@@ -416,7 +416,7 @@ export default function TaskManager() {
           });
         }
       }
-      
+
       setTasks(tasksData);
     } catch (error) {
       console.error("Error fetching tasks:", error);
@@ -424,19 +424,19 @@ export default function TaskManager() {
       setLoading(false);
     }
   };
-  
+
   // UPDATED: Sets up a real-time listener on the notifications Collection Group
   const setupTasksListener = () => {
     if (!session?.lineUserId) {
-      return () => {};
+      return () => { };
     }
-  
+
     const notificationsQuery = query(
       collectionGroup(db, 'notifications'),
       where('userId', '==', session.lineUserId),
       orderBy('notificationTime', 'desc')
     );
-  
+
     const unsubscribe = onSnapshot(notificationsQuery, async (notificationsSnapshot) => {
       const tasksData = [];
       for (const notificationDoc of notificationsSnapshot.docs) {
@@ -461,10 +461,10 @@ export default function TaskManager() {
       }
       setTasks(tasksData);
     });
-  
+
     return unsubscribe;
   };
-  
+
 
   useEffect(() => {
     if (session?.lineUserId) {
@@ -598,8 +598,8 @@ export default function TaskManager() {
           className="h-12 relative hover:bg-gray-50 rounded-lg transition-colors p-1"
         >
           <div className={`w-10 h-10 flex items-center justify-center rounded-full text-sm font-medium transition-colors ${isToday ? 'bg-black text-white' :
-              isSelected ? 'bg-blue-500 text-white' :
-                'text-gray-900 hover:bg-gray-100'
+            isSelected ? 'bg-blue-500 text-white' :
+              'text-gray-900 hover:bg-gray-100'
             }`}>
             {day}
           </div>
@@ -609,7 +609,7 @@ export default function TaskManager() {
                 <div
                   key={index}
                   className={`w-2 h-2 rounded-full ${task.status === 'Completed' ? 'bg-green-400' :
-                      task.status === 'Overdue' ? 'bg-red-400' : 'bg-blue-400'
+                    task.status === 'Overdue' ? 'bg-red-400' : 'bg-blue-400'
                     }`}
                 />
               ))}
@@ -720,9 +720,9 @@ export default function TaskManager() {
                   try {
                     const taskDate = task.notificationTime.toDate();
                     timeStr = taskDate.toLocaleTimeString('th-TH', {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      });
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    });
                   } catch (error) {
                     timeStr = "Invalid time";
                   }
@@ -785,13 +785,13 @@ export default function TaskManager() {
                           )}
                           {(task.status === "Completed" || task.status === "Overdue") && (
                             <div className="flex space-x-2">
-                                <button
-                                    onClick={() => handleDeleteTask(task)}
-                                    className="flex items-center space-x-1 text-xs px-2 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
-                                >
-                                    <Trash2 className="w-3 h-3" />
-                                    <span>Delete</span>
-                                </button>
+                              <button
+                                onClick={() => handleDeleteTask(task)}
+                                className="flex items-center space-x-1 text-xs px-2 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                                <span>Delete</span>
+                              </button>
                             </div>
                           )}
                         </div>
@@ -1292,8 +1292,8 @@ export default function TaskManager() {
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === tab
-                      ? "bg-blue-500 text-white"
-                      : "text-gray-500 hover:text-gray-700"
+                    ? "bg-blue-500 text-white"
+                    : "text-gray-500 hover:text-gray-700"
                     }`}
                 >
                   {tab}
@@ -1309,8 +1309,8 @@ export default function TaskManager() {
                     key={filter}
                     onClick={() => setUpcomingFilter(filter)}
                     className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${upcomingFilter === filter
-                        ? "bg-blue-100 text-blue-600 border border-blue-300"
-                        : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+                      ? "bg-blue-100 text-blue-600 border border-blue-300"
+                      : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
                       }`}
                   >
                     {filter}
@@ -1368,7 +1368,7 @@ export default function TaskManager() {
                       </span>
                       {task.status === "Upcoming" && (
                         <div className="flex space-x-2">
-                           <button
+                          <button
                             onClick={() => handleCompleteTask(task)}
                             className="flex items-center space-x-1 text-xs px-3 py-1 bg-green-100 text-green-600 rounded-md hover:bg-green-200 transition-colors"
                           >
@@ -1393,7 +1393,7 @@ export default function TaskManager() {
                       )}
                       {(task.status === "Completed" || task.status === "Overdue") && (
                         <div className="flex space-x-2">
-                           <button
+                          <button
                             onClick={() => handleDeleteTask(task)}
                             className="flex items-center space-x-1 text-xs px-3 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
                           >
