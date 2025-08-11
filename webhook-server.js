@@ -159,7 +159,6 @@ async function handleCreateTask(event, prompt) {
     const startDate = moment.tz(taskDetails.date, 'YYYY-MM-DD', 'Asia/Singapore');
     let endDate = startDate.clone();
 
-    // Set end dates based on the new logic
     if (taskDetails.repeat === 'daily') {
       endDate.add(3, 'days');
     } else if (taskDetails.repeat === 'weekly') {
@@ -206,6 +205,7 @@ async function handleCreateTask(event, prompt) {
       altText: "งานใหม่ถูกสร้างเรียบร้อยแล้ว",
       contents: {
         type: "bubble",
+        size: "kilo",
         header: {
           type: "box",
           layout: "vertical",
@@ -217,12 +217,16 @@ async function handleCreateTask(event, prompt) {
           type: "box",
           layout: "vertical",
           contents: [
-            { type: "box", layout: "vertical", margin: "md", spacing: "sm", contents: [
-              { type: "box", layout: "baseline", spacing: "sm", contents: [
-                { type: "text", text: "📋 ชื่องาน:", color: "#aaaaaa", size: "sm", flex: 2, },
-                { type: "text", text: masterTask.title || "ไม่ระบุชื่อ", wrap: true, size: "sm", flex: 5, },
-              ], },
-            ], },
+            {
+              type: "box", layout: "vertical", margin: "md", spacing: "sm", contents: [
+                {
+                  type: "box", layout: "baseline", spacing: "sm", contents: [
+                    { type: "text", text: "📋 ชื่องาน:", color: "#aaaaaa", size: "sm", flex: 2, },
+                    { type: "text", text: masterTask.title || "ไม่ระบุชื่อ", wrap: true, size: "sm", flex: 5, },
+                  ],
+                },
+              ],
+            },
           ],
           paddingAll: "20px",
         },
@@ -278,27 +282,30 @@ async function handlePostback(event) {
     const taskId = data.replace("complete_task_", "");
 
     try {
-      const parentTaskDocRef = db.collection("tasks").doc(taskId).collection("notifications");
-      const parentTaskDoc = await parentTaskDocRef.get();
-      
-      const notificationRef = parentTaskDoc.docs[0].ref;
+      const taskRef = db.collection("tasks").doc(taskId);
+      const taskSnap = await taskRef.get();
 
-      if (!notificationRef) {
+      if (!taskSnap.exists) {
         await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ ไม่พบงานที่ระบุในระบบ" }]);
         return;
       }
-      
-      const taskData = (await notificationRef.get()).data();
-      
+
+      const taskData = taskSnap.data();
+
       if (taskData.userId !== userId) {
         await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ คุณไม่มีสิทธิ์ในการอัปเดตงานนี้" }]);
         return;
       }
 
-      await notificationRef.update({
-        status: "Completed",
-        completedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+      // Find the specific notification and update its status
+      const notificationsQuery = await db.collection("tasks").doc(taskId).collection("notifications").get();
+      if (!notificationsQuery.empty) {
+        const notificationRef = notificationsQuery.docs[0].ref;
+        await notificationRef.update({
+          status: "Completed",
+          completedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
 
       console.log(`[${getTimestamp()}] ✅ Task "${taskData.title}" marked as Completed`);
       await sendReplyMessage(event.replyToken, [{ type: "text", text: `✅ งาน "${taskData.title}" ถูกทำเครื่องหมายว่าเสร็จสิ้นแล้ว` }]);
@@ -315,7 +322,7 @@ app.post("/webhook", (req, res) => {
   const receivedTime = getTimestamp();
   console.log(`[${receivedTime}] 📩 Webhook received!`);
   res.status(200).send("OK");
-  
+
   const events = req.body.events || [];
   if (events.length === 0) return;
 
@@ -323,7 +330,7 @@ app.post("/webhook", (req, res) => {
     try {
       if (event.type === "message" && event.message?.type === "text") {
         const messageText = event.message.text;
-        
+
         if (!messageText.toLowerCase().startsWith("alin") && !messageText.startsWith("อลิน")) {
           const replyMessage = { type: "text", text: `ได้รับข้อความ: ${messageText} 🤖\n\nใช้งานผ่านเว็บแอป: https://your-domain.com` };
           await sendReplyMessage(event.replyToken, [replyMessage]);
@@ -332,7 +339,7 @@ app.post("/webhook", (req, res) => {
 
         const aiPrompt = messageText.substring(messageText.indexOf(" ") + 1);
         const characterThreshold = 500;
-        
+
         if (aiPrompt.length > characterThreshold) {
           const replyMessage = { type: "text", text: "ข้อความของคุณยาวเกินไป กรุณาพิมพ์ให้กระชับยิ่งขึ้น" };
           await sendReplyMessage(event.replyToken, [replyMessage]);
@@ -346,41 +353,33 @@ app.post("/webhook", (req, res) => {
             await handleCreateTask(event, aiPrompt);
             break;
           case 'read_task':
-            // await handleReadTask(event, aiPrompt);
             await sendReplyMessage(event.replyToken, [{ type: "text", text: "ฟังก์ชันการดูงานยังอยู่ระหว่างการพัฒนา" }]);
             break;
           case 'edit_task':
-            // await handleEditTask(event, aiPrompt);
             await sendReplyMessage(event.replyToken, [{ type: "text", text: "ฟังก์ชันการแก้ไขงานยังอยู่ระหว่างการพัฒนา" }]);
             break;
           case 'delete_task':
-            // await handleDeleteTask(event, aiPrompt);
             await sendReplyMessage(event.replyToken, [{ type: "text", text: "ฟังก์ชันการลบงานยังอยู่ระหว่างการพัฒนา" }]);
             break;
           case 'complete_task':
-            // await handleCompleteTask(event, aiPrompt);
             await sendReplyMessage(event.replyToken, [{ type: "text", text: "ฟังก์ชันการทำเครื่องหมายว่างานเสร็จสิ้นยังอยู่ระหว่างการพัฒนา" }]);
             break;
           case 'health_query':
-            // await handleHealthQuery(event, aiPrompt);
             await sendReplyMessage(event.replyToken, [{ type: "text", text: "ฟังก์ชันการสอบถามสุขภาพยังอยู่ระหว่างการพัฒนา" }]);
             break;
           case 'weather_check':
-            // await handleWeatherCheck(event, aiPrompt);
             await sendReplyMessage(event.replyToken, [{ type: "text", text: "ฟังก์ชันการตรวจสอบสภาพอากาศยังอยู่ระหว่างการพัฒนา" }]);
             break;
           case 'general_search':
-            // await handleGeneralKnowledge(event, aiPrompt);
             await sendReplyMessage(event.replyToken, [{ type: "text", text: "ฟังก์ชันการค้นหาทั่วไปยังอยู่ระหว่างการพัฒนา" }]);
             break;
           case 'create_content':
-            // await handleContentDrafting(event, aiPrompt);
             await sendReplyMessage(event.replyToken, [{ type: "text", text: "ฟังก์ชันการสร้างเนื้อหายังอยู่ระหว่างการพัฒนา" }]);
             break;
           default:
             await sendReplyMessage(event.replyToken, [{ type: "text", text: "ขออภัย อลินยังไม่สามารถจัดการคำสั่งนี้ได้" }]);
         }
-        
+
       } else if (event.type === "postback") {
         await handlePostback(event);
       } else if (event.type === "follow") {
@@ -414,6 +413,51 @@ app.post("/webhook", (req, res) => {
   console.log(`[${getTimestamp()}] 🏁 Finished processing all ${events.length} events`);
 });
 
+
+async function handlePostback(event) {
+  const data = event.postback?.data;
+  const userId = event.source?.userId;
+
+  if (!data || !userId) return;
+
+  if (data.startsWith("complete_task_")) {
+    const taskId = data.replace("complete_task_", "");
+
+    try {
+      const taskRef = db.collection("tasks").doc(taskId);
+      const taskSnap = await taskRef.get();
+
+      if (!taskSnap.exists) {
+        await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ ไม่พบงานที่ระบุในระบบ" }]);
+        return;
+      }
+
+      const taskData = taskSnap.data();
+
+      if (taskData.userId !== userId) {
+        await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ คุณไม่มีสิทธิ์ในการอัปเดตงานนี้" }]);
+        return;
+      }
+
+      const notificationsQuery = await db.collection("tasks").doc(taskId).collection("notifications").get();
+      if (!notificationsQuery.empty) {
+        const notificationRef = notificationsQuery.docs[0].ref;
+        await notificationRef.update({
+          status: "Completed",
+          completedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+
+      console.log(`[${getTimestamp()}] ✅ Task "${taskData.title}" marked as Completed`);
+      await sendReplyMessage(event.replyToken, [{ type: "text", text: `✅ งาน "${taskData.title}" ถูกทำเครื่องหมายว่าเสร็จสิ้นแล้ว` }]);
+
+    } catch (error) {
+      console.error(`[${getTimestamp()}] ❌ Error processing complete_task:`, error);
+      await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ เกิดข้อผิดพลาดในการอัปเดตงาน กรุณาลองใหม่" }]);
+    }
+    return;
+  }
+}
 
 app.post("/test-complete-task", async (req, res) => {
   const { taskId, userId } = req.body;
