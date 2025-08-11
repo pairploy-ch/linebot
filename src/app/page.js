@@ -452,6 +452,30 @@ export default function TaskManager() {
     }
   }, [session?.lineUserId]);
 
+  // const getFilteredTasks = () => {
+  //   let filteredTasks = tasks.filter((task) => task.status === activeTab);
+  //   if (activeTab === "Upcoming" && upcomingFilter !== "All") {
+  //     filteredTasks = filteredTasks.filter((task) => {
+  //       if (!task.notificationTime) return false;
+  //       try {
+  //         const taskDate = task.notificationTime.toDate();
+  //         if (upcomingFilter === "Today") {
+  //           return isToday(taskDate);
+  //         } else if (upcomingFilter === "This Week") {
+  //           return isThisWeek(taskDate);
+  //         }
+  //         return true;
+  //       } catch (error) {
+  //         console.error("Error filtering task by date:", error);
+  //         return false;
+  //       }
+  //     });
+  //   }
+  //   return filteredTasks;
+  // };
+
+  // from linebot/src/app/page.js
+
   const getFilteredTasks = () => {
     let filteredTasks = tasks.filter((task) => task.status === activeTab);
     if (activeTab === "Upcoming" && upcomingFilter !== "All") {
@@ -471,8 +495,24 @@ export default function TaskManager() {
         }
       });
     }
+
+    // Add this sorting logic to display the nearest tasks first
+    if (activeTab === "Upcoming") {
+      filteredTasks.sort((a, b) => {
+        try {
+          const timeA = a.notificationTime?.toDate() || new Date(0);
+          const timeB = b.notificationTime?.toDate() || new Date(0);
+          return timeA.getTime() - timeB.getTime();
+        } catch (error) {
+          console.error("Error sorting tasks:", error);
+          return 0;
+        }
+      });
+    }
+
     return filteredTasks;
   };
+
 
   const getStatusColor = (status) => {
     switch (status) {
