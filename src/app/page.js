@@ -1,3 +1,5 @@
+// from linebot/src/app/page.js
+
 "use client";
 
 import { useSession, signIn, signOut } from "next-auth/react";
@@ -452,30 +454,6 @@ export default function TaskManager() {
     }
   }, [session?.lineUserId]);
 
-  // const getFilteredTasks = () => {
-  //   let filteredTasks = tasks.filter((task) => task.status === activeTab);
-  //   if (activeTab === "Upcoming" && upcomingFilter !== "All") {
-  //     filteredTasks = filteredTasks.filter((task) => {
-  //       if (!task.notificationTime) return false;
-  //       try {
-  //         const taskDate = task.notificationTime.toDate();
-  //         if (upcomingFilter === "Today") {
-  //           return isToday(taskDate);
-  //         } else if (upcomingFilter === "This Week") {
-  //           return isThisWeek(taskDate);
-  //         }
-  //         return true;
-  //       } catch (error) {
-  //         console.error("Error filtering task by date:", error);
-  //         return false;
-  //       }
-  //     });
-  //   }
-  //   return filteredTasks;
-  // };
-
-  // from linebot/src/app/page.js
-
   const getFilteredTasks = () => {
     let filteredTasks = tasks.filter((task) => task.status === activeTab);
     if (activeTab === "Upcoming" && upcomingFilter !== "All") {
@@ -512,7 +490,6 @@ export default function TaskManager() {
 
     return filteredTasks;
   };
-
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -1320,9 +1297,10 @@ export default function TaskManager() {
               getFilteredTasks().map((task) => (
                 <div
                   key={task.id}
+                  onClick={() => handleEditTask(task)} // Entire box is now clickable
                   className={`border-l-4 ${getTaskBorderColor(
                     task.color
-                  )} rounded-r-lg p-4`}
+                  )} rounded-r-lg p-4 cursor-pointer`}
                 >
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
@@ -1346,6 +1324,7 @@ export default function TaskManager() {
                         <span>Repeat: {task.repeatType}</span>
                       </div>
                     </div>
+                    {/* The action buttons are now removed from this view */}
                     <div className="flex flex-col items-end space-y-2">
                       <span
                         className={`px-3 py-1 rounded-full text-xs font-medium text-white ${getStatusColor(
@@ -1354,42 +1333,6 @@ export default function TaskManager() {
                       >
                         {task.status}
                       </span>
-                      {task.status === "Upcoming" && (
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => handleCompleteTask(task)}
-                            className="flex items-center space-x-1 text-xs px-3 py-1 bg-green-100 text-green-600 rounded-md hover:bg-green-200 transition-colors"
-                          >
-                            <CheckCircle className="w-3 h-3" />
-                            <span>Complete</span>
-                          </button>
-                          <button
-                            onClick={() => handleEditTask(task)}
-                            className="flex items-center space-x-1 text-xs px-3 py-1 bg-blue-100 text-blue-600 rounded-md hover:bg-blue-200 transition-colors"
-                          >
-                            <Edit className="w-3 h-3" />
-                            <span>Edit</span>
-                          </button>
-                          <button
-                            onClick={() => handleDeleteTask(task)}
-                            className="flex items-center space-x-1 text-xs px-3 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            <span>Delete</span>
-                          </button>
-                        </div>
-                      )}
-                      {(task.status === "Completed" || task.status === "Overdue") && (
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => handleDeleteTask(task)}
-                            className="flex items-center space-x-1 text-xs px-3 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            <span>Delete</span>
-                          </button>
-                        </div>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -1440,4 +1383,3 @@ export default function TaskManager() {
     </div>
   );
 }
-
