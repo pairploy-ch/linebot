@@ -776,7 +776,9 @@ app.post("/webhook", (req, res) => {
         if (intent === 'create_task') {
           const aiOutputJson = await createTaskWithAI(aiPrompt);
           try {
-            const aiTaskData = JSON.parse(aiOutputJson);
+            // Fix: Strip markdown code block fences before parsing JSON
+            const cleanJsonString = aiOutputJson.replace(/```json|```/g, '').trim();
+            const aiTaskData = JSON.parse(cleanJsonString);
             
             // Map AI output to the expected task format
             const taskDataToCreate = {
