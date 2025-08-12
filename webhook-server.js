@@ -119,6 +119,8 @@ async function classifyMessageWithAI(prompt) {
 }
 
 async function createTaskWithAI(prompt) {
+  const now = moment().tz("Asia/Bangkok");
+  const currentDate = now.format("dddd DD/MM/YYYY HH.mm")
   const analyzeCreateTaskPrompt = `
         รับคำสั่งสร้าง reminder แปลงเป็น JSON
 
@@ -131,7 +133,8 @@ async function createTaskWithAI(prompt) {
     }
 
     กติกา:
-    - “พรุ่งนี้”, “วันนี้” → แปลงเป็นวันที่จริง today date is Tuesday 23/7/2568 11.00
+    - today date is ${currentDate}
+    - “พรุ่งนี้”, “วันนี้” → แปลงเป็นวันที่จริง 
     - “ทุกวัน/พุธ” → set repeat ให้ตรง
     - ไม่มีคำซ้ำ → repeat = once
     ตอบกลับเป็น JSON เท่านั้น ห้ามมีคำอธิบาย
@@ -191,28 +194,28 @@ async function handleAddTaskServer(taskData, lineUserId, userName) {
 
     // Step 3: Calculate and create notifications as a subcollection
     const calculateNotificationDates = (startDate, time, repeat, endDate) => {
-        const dates = [];
-        // FIX: Handle Thai Buddhist year (B.E.) to Gregorian year (A.D.) conversion
-        const startYear = parseInt(startDate.substring(0, 4), 10);
-        const gregorianYear = startYear > 2500 ? startYear - 543 : startYear;
-        const gregorianStartDate = `${gregorianYear}${startDate.substring(4)}`;
-        
-        let currentDate = moment.tz(`${gregorianStartDate}T${time}`, "Asia/Bangkok");
+      const dates = [];
+      // FIX: Handle Thai Buddhist year (B.E.) to Gregorian year (A.D.) conversion
+      const startYear = parseInt(startDate.substring(0, 4), 10);
+      const gregorianYear = startYear > 2500 ? startYear - 543 : startYear;
+      const gregorianStartDate = `${gregorianYear}${startDate.substring(4)}`;
 
-        const endYear = parseInt(endDate.substring(0, 4), 10);
-        const gregorianEndYear = endYear > 2500 ? endYear - 543 : endYear;
-        const gregorianEndDate = `${gregorianEndYear}${endDate.substring(4)}`;
+      let currentDate = moment.tz(`${gregorianStartDate}T${time}`, "Asia/Bangkok");
 
-        const end = repeat === "Never" ? currentDate.clone() : moment.tz(`${gregorianEndDate}T23:59:59`, "Asia/Bangkok");
+      const endYear = parseInt(endDate.substring(0, 4), 10);
+      const gregorianEndYear = endYear > 2500 ? endYear - 543 : endYear;
+      const gregorianEndDate = `${gregorianEndYear}${endDate.substring(4)}`;
 
-        while (currentDate.isSameOrBefore(end)) {
-            dates.push(currentDate.toDate());
-            if (repeat === "Daily") currentDate.add(1, "day");
-            else if (repeat === "Weekly") currentDate.add(1, "week");
-            else if (repeat === "Monthly") currentDate.add(1, "month");
-            else break; // For 'Never' repeat type
-        }
-        return dates;
+      const end = repeat === "Never" ? currentDate.clone() : moment.tz(`${gregorianEndDate}T23:59:59`, "Asia/Bangkok");
+
+      while (currentDate.isSameOrBefore(end)) {
+        dates.push(currentDate.toDate());
+        if (repeat === "Daily") currentDate.add(1, "day");
+        else if (repeat === "Weekly") currentDate.add(1, "week");
+        else if (repeat === "Monthly") currentDate.add(1, "month");
+        else break; // For 'Never' repeat type
+      }
+      return dates;
     };
 
     const notificationDates = calculateNotificationDates(
@@ -221,7 +224,7 @@ async function handleAddTaskServer(taskData, lineUserId, userName) {
       taskData.repeat,
       taskData.endDate
     );
-    
+
     // FIX: Get the collection reference directly from the document reference
     const notificationsCollectionRef = docRef.collection("notifications");
     for (const date of notificationDates) {
@@ -233,7 +236,7 @@ async function handleAddTaskServer(taskData, lineUserId, userName) {
       });
     }
     console.log(`[${getTimestamp()}] ✅ ${notificationDates.length} notification(s) created.`);
-    
+
     return { success: true, taskId: docRef.id };
   } catch (error) {
     console.error(`[${getTimestamp()}] ❌ Failed to add task:`, error);
@@ -348,7 +351,7 @@ app.post("/webhook", (req, res) => {
             // Fix: Strip markdown code block fences before parsing JSON
             const cleanJsonString = aiOutputJson.replace(/```json|```/g, '').trim();
             const aiTaskData = JSON.parse(cleanJsonString);
-            
+
             // Map AI output to the expected task format
             const taskDataToCreate = {
               title: aiTaskData.task,
@@ -360,15 +363,15 @@ app.post("/webhook", (req, res) => {
               color: "blue",
               status: "Upcoming",
             };
-            
+
             const result = await handleAddTaskServer(taskDataToCreate, event.source.userId, event.source.displayName || "LINE User");
-            
+
             if (result.success) {
-                const replyMessage = { type: "text", text: `✅ Task "${taskDataToCreate.title}" has been created.` };
-                await sendReplyMessage(event.replyToken, [replyMessage]);
+              const replyMessage = { type: "text", text: `✅ Task "${taskDataToCreate.title}" has been created.` };
+              await sendReplyMessage(event.replyToken, [replyMessage]);
             } else {
-                const replyMessage = { type: "text", text: "❌ Failed to create task. Please try again." };
-                await sendReplyMessage(event.replyToken, [replyMessage]);
+              const replyMessage = { type: "text", text: "❌ Failed to create task. Please try again." };
+              await sendReplyMessage(event.replyToken, [replyMessage]);
             }
           } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Error parsing AI response or creating task:`, error);
