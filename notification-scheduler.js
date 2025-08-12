@@ -209,7 +209,7 @@
 //   console.log(`[${getTimestamp()}] 🌍 Current UTC time: ${moment.utc().format('YYYY-MM-DD HH:mm:ss')} UTC`);
 //   console.log(`[${getTimestamp()}] 🇹🇭 Current Bangkok time: ${now.format('YYYY-MM-DD HH:mm:ss')} (Asia/Bangkok)`);
 //   console.log(`[${getTimestamp()}] 🔍 Looking for notifications due between ${fiveMinutesAgo.format('YYYY-MM-DD HH:mm:ss')} and ${now.format('YYYY-MM-DD HH:mm:ss')}`);
-  
+
 //   try {
 //     const notificationsRef = db.collectionGroup('notifications');
 
@@ -261,7 +261,7 @@
 //             parentId: parentTaskDoc.id,
 //             userId: parentTaskData.userId,
 //           });
-          
+
 //           messagesToSend.push({
 //             userId: parentTaskData.userId,
 //             message: flexMessage
@@ -550,7 +550,7 @@ async function checkNotifications() {
   console.log(`[${getTimestamp()}] 🌍 Current UTC time: ${moment.utc().format('YYYY-MM-DD HH:mm:ss')} UTC`);
   console.log(`[${getTimestamp()}] 🇹🇭 Current Bangkok time: ${now.format('YYYY-MM-DD HH:mm:ss')} (Asia/Bangkok)`);
   console.log(`[${getTimestamp()}] 🔍 Looking for notifications due between ${fiveMinutesAgo.format('YYYY-MM-DD HH:mm:ss')} and ${now.format('YYYY-MM-DD HH:mm:ss')}`);
-  
+
   try {
     const notificationsRef = db.collectionGroup('notifications');
 
@@ -602,7 +602,7 @@ async function checkNotifications() {
             parentId: parentTaskDoc.id,
             userId: parentTaskData.userId,
           });
-          
+
           messagesToSend.push({
             userId: parentTaskData.userId,
             message: flexMessage
@@ -620,7 +620,7 @@ async function checkNotifications() {
             console.log(`[${getTimestamp()}] 📝 Added batch update for parent task ${parentTaskDoc.id} to mark it as Overdue.`);
           }
         } else {
-            console.log(`[${getTimestamp()}] ⏳ Notification is not yet due. Skipping message.`);
+          console.log(`[${getTimestamp()}] ⏳ Notification is not yet due. Skipping message.`);
         }
       }
     }
@@ -647,7 +647,7 @@ async function checkDailySummary() {
   try {
     const usersRef = db.collection('users');
     const usersSnapshot = await usersRef.get();
-    
+
     if (usersSnapshot.empty) {
       console.log(`[${getTimestamp()}] ⚠️ No users found in the database. Exiting.`);
       return;
@@ -655,7 +655,7 @@ async function checkDailySummary() {
 
     const todayStart = moment().tz('Asia/Bangkok').startOf('day');
     const todayEnd = moment().tz('Asia/Bangkok').endOf('day');
-    
+
     for (const userDoc of usersSnapshot.docs) {
       const userId = userDoc.id;
       console.log(`[${getTimestamp()}] 🔎 Processing tasks for user: ${userId}`);
@@ -665,26 +665,26 @@ async function checkDailySummary() {
 
       const userTasks = [];
       for (const taskDoc of userTasksSnapshot.docs) {
-          const notificationsRef = taskDoc.ref.collection('notifications');
-          const notificationsQuery = notificationsRef
-            .where('notificationTime', '>=', Timestamp.fromDate(todayStart.toDate()))
-            .where('notificationTime', '<=', Timestamp.fromDate(todayEnd.toDate()))
-            .where('status', '==', 'Upcoming');
-          
-          const notificationsSnapshot = await notificationsQuery.get();
-          
-          for (const notiDoc of notificationsSnapshot.docs) {
-            const notiData = notiDoc.data();
-            userTasks.push({
-              title: taskDoc.data().title,
-              notificationTime: notiData.notificationTime
-            });
-          }
+        const notificationsRef = taskDoc.ref.collection('notifications');
+        const notificationsQuery = notificationsRef
+          .where('notificationTime', '>=', Timestamp.fromDate(todayStart.toDate()))
+          .where('notificationTime', '<=', Timestamp.fromDate(todayEnd.toDate()))
+          .where('status', '==', 'Upcoming');
+
+        const notificationsSnapshot = await notificationsQuery.get();
+
+        for (const notiDoc of notificationsSnapshot.docs) {
+          const notiData = notiDoc.data();
+          userTasks.push({
+            title: taskDoc.data().title,
+            notificationTime: notiData.notificationTime
+          });
+        }
       }
-      
+
       let summaryText;
       if (userTasks.length > 0) {
-        const tasksString = userTasks.map(task => 
+        const tasksString = userTasks.map(task =>
           `• ${task.title} at ${moment(task.notificationTime.toDate()).tz("Asia/Bangkok").format("HH:mm")}`
         ).join('\n');
         summaryText = `🗓️ สรุปงานของคุณสำหรับวันนี้:\n\n${tasksString}`;
@@ -708,7 +708,7 @@ async function checkDailySummary() {
 }
 
 // New Cron Job for daily summaries
-cron.schedule('31 18 * * *', () => {
+cron.schedule('37 18 * * *', () => {
   const cronTime = getTimestamp();
   console.log(`\n[${cronTime}] ⏰ 🔄 CRON JOB TRIGGERED - Running daily summary check...`);
   checkDailySummary();
@@ -748,5 +748,5 @@ process.on('uncaughtException', (error) => {
 
 process.on('unhandledRejection', (reason, promise) => {
   const errorTime = getTimestamp();
-  console.error(`[${errorTime}] ❌ Unhandled Rejection at:`, promise, 'reason:', reason); 
+  console.error(`[${errorTime}] ❌ Unhandled Rejection at:`, promise, 'reason:', reason);
 });
