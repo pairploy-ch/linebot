@@ -244,7 +244,7 @@ async function handleAddTaskServer(taskData, lineUserId, userName) {
 // FIX: Corrected generalSearchWithAI function
 async function generalSearchWithAI(prompt) {
   const generalSearchPrompt = `
-    Answer the following general knowledge question concisely (10-15 words).
+    Answer the following general knowledge question concisely .
     User message: "${prompt}"
   `;
   const response = await openaiClient.chat.completions.create({
