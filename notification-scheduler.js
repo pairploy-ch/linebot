@@ -708,7 +708,7 @@ async function checkDailySummary() {
 }
 
 // New Cron Job for daily summaries
-cron.schedule('28 19 * * *', () => {
+cron.schedule('31 18 * * *', () => {
   const cronTime = getTimestamp();
   console.log(`\n[${cronTime}] ⏰ 🔄 CRON JOB TRIGGERED - Running daily summary check...`);
   checkDailySummary();
