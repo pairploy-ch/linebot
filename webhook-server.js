@@ -388,7 +388,8 @@ app.post("/webhook", (req, res) => {
 
 
         else {
-          const replyMessage = { type: "text", text: `ประเภทข้อความที่ตรวจพบ: ${intent}` };
+          // const replyMessage = { type: "text", text: `ประเภทข้อความที่ตรวจพบ: ${intent}` };
+          const replyMessage = { type: "text", text: "❓ ขอโทษครับ ฉันไม่สามารถเข้าใจคำสั่งนี้ได้ กรุณาลองใหม่" };
           await sendReplyMessage(event.replyToken, [replyMessage]);
         }
 
