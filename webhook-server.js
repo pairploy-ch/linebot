@@ -88,7 +88,7 @@
 // async function classifyMessageWithAI(prompt) {
 //   const classificationPrompt = `
 //     You are an intent classifier for a personal assistant. Your job is to determine the user's intent from the message and respond with a single, specific category code. Do not include any other text, explanation, or punctuation.
-    
+
 //     Categories:
 //     - create_task: User wants to create a new task or reminder.
 //     - read_task: User wants to view, list, or check their existing tasks.
@@ -102,7 +102,7 @@
 //     - unknown: The intent does not match any of the above categories.
 
 //     User message: "${prompt}"
-    
+
 //     Your response (single category code only):
 //   `;
 
@@ -506,13 +506,12 @@
 // });
 
 // module.exports = app;
-
 const express = require("express");
 const admin = require("firebase-admin");
 const moment = require("moment-timezone");
 const openai = require("openai");
 const { default: fetch } = require("node-fetch");
-const { Timestamp, collection, addDoc, doc, setDoc } = require('firebase-admin/firestore');
+const { Timestamp, collection: clientCollection, addDoc, doc, setDoc } = require('firebase-admin/firestore');
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -703,18 +702,18 @@ async function handleAddTaskServer(taskData, lineUserId, userName) {
 
     // Step 3: Calculate and create notifications as a subcollection
     const calculateNotificationDates = (startDate, time, repeat, endDate) => {
-        const dates = [];
-        let currentDate = moment.tz(`${startDate}T${time}`, "Asia/Bangkok");
-        const end = repeat === "Never" ? currentDate.clone() : moment.tz(`${endDate}T23:59:59`, "Asia/Bangkok");
+      const dates = [];
+      let currentDate = moment.tz(`${startDate}T${time}`, "Asia/Bangkok");
+      const end = repeat === "Never" ? currentDate.clone() : moment.tz(`${endDate}T23:59:59`, "Asia/Bangkok");
 
-        while (currentDate.isSameOrBefore(end)) {
-            dates.push(currentDate.toDate());
-            if (repeat === "Daily") currentDate.add(1, "day");
-            else if (repeat === "Weekly") currentDate.add(1, "week");
-            else if (repeat === "Monthly") currentDate.add(1, "month");
-            else break; // For 'Never' repeat type
-        }
-        return dates;
+      while (currentDate.isSameOrBefore(end)) {
+        dates.push(currentDate.toDate());
+        if (repeat === "Daily") currentDate.add(1, "day");
+        else if (repeat === "Weekly") currentDate.add(1, "week");
+        else if (repeat === "Monthly") currentDate.add(1, "month");
+        else break; // For 'Never' repeat type
+      }
+      return dates;
     };
 
     const notificationDates = calculateNotificationDates(
@@ -724,9 +723,9 @@ async function handleAddTaskServer(taskData, lineUserId, userName) {
       taskData.endDate
     );
 
-    const notificationsCollectionRef = collection(docRef, "notifications");
+    // FIX: Get the collection reference directly from the document reference
+    const notificationsCollectionRef = docRef.collection("notifications");
     for (const date of notificationDates) {
-      // FIX: Use the add() method on the subcollection reference
       await notificationsCollectionRef.add({
         notificationTime: Timestamp.fromDate(date),
         status: "Upcoming",
@@ -735,7 +734,7 @@ async function handleAddTaskServer(taskData, lineUserId, userName) {
       });
     }
     console.log(`[${getTimestamp()}] ✅ ${notificationDates.length} notification(s) created.`);
-    
+
     return { success: true, taskId: docRef.id };
   } catch (error) {
     console.error(`[${getTimestamp()}] ❌ Failed to add task:`, error);
@@ -781,7 +780,7 @@ app.post("/webhook", (req, res) => {
             // Fix: Strip markdown code block fences before parsing JSON
             const cleanJsonString = aiOutputJson.replace(/```json|```/g, '').trim();
             const aiTaskData = JSON.parse(cleanJsonString);
-            
+
             // Map AI output to the expected task format
             const taskDataToCreate = {
               title: aiTaskData.task,
@@ -793,15 +792,15 @@ app.post("/webhook", (req, res) => {
               color: "blue",
               status: "Upcoming",
             };
-            
+
             const result = await handleAddTaskServer(taskDataToCreate, event.source.userId, event.source.displayName || "LINE User");
-            
+
             if (result.success) {
-                const replyMessage = { type: "text", text: `✅ Task "${taskDataToCreate.title}" has been created.` };
-                await sendReplyMessage(event.replyToken, [replyMessage]);
+              const replyMessage = { type: "text", text: `✅ Task "${taskDataToCreate.title}" has been created.` };
+              await sendReplyMessage(event.replyToken, [replyMessage]);
             } else {
-                const replyMessage = { type: "text", text: "❌ Failed to create task. Please try again." };
-                await sendReplyMessage(event.replyToken, [replyMessage]);
+              const replyMessage = { type: "text", text: "❌ Failed to create task. Please try again." };
+              await sendReplyMessage(event.replyToken, [replyMessage]);
             }
           } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Error parsing AI response or creating task:`, error);
