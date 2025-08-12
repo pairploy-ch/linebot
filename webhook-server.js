@@ -262,6 +262,24 @@ async function generalSearchWithAI(prompt) {
   return aiAnswer;
 }
 
+
+async function healthWithAI(prompt) {
+  const healthPrompt = `
+    Answer, Suggest, or Comment the following health question or message concisely .
+    User message: "${prompt}"
+  `;
+  const response = await openaiClient.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: healthPrompt }],
+    max_tokens: 200,
+    temperature: 0,
+  });
+  // FIX: Extract the text from the response object
+  const aiAnswer = response.choices[0].message.content.trim();
+  console.log(`[${getTimestamp()}] 🤖 AI answer health message: ${aiAnswer}`);
+  return aiAnswer;
+}
+
 async function handlePostback(event) {
   const data = event.postback?.data;
   const userId = event.source?.userId;
@@ -386,10 +404,16 @@ app.post("/webhook", (req, res) => {
           await sendReplyMessage(event.replyToken, [replyMessage]);
         }
 
+        else if (intent === 'health_query') {
+          const aiOutputhealth = await healthWithAI(aiPrompt);
+          const replyMessage = { type: "text", text: `${aiOutputhealth}` };
+          await sendReplyMessage(event.replyToken, [replyMessage]);
+        }
+
 
         else {
           // const replyMessage = { type: "text", text: `ประเภทข้อความที่ตรวจพบ: ${intent}` };
-          const replyMessage = { type: "text", text: "❓ ขอโทษครับ ฉันไม่สามารถเข้าใจคำสั่งนี้ได้ กรุณาลองใหม่" };
+          const replyMessage = { type: "text", text: "Alin ขอโทษค่ะ Alin ไม่สามารถเข้าใจคำสั่งนี้ได้ รบกวนพิมพ์มาใหม่อีกรอบนะคะ" };
           await sendReplyMessage(event.replyToken, [replyMessage]);
         }
 
@@ -535,23 +559,13 @@ app.get("/", (req, res) => {
 
 
 app.get("/health", (req, res) => {
-
   res.json({ status: "healthy", timestamp: getTimestamp(), uptime: process.uptime(), });
-
 });
-
 
 app.listen(port, () => {
-
   console.log(`[${getTimestamp()}] 🚀 Webhook server running at http://localhost:${port}`);
-
   console.log(`[${getTimestamp()}] 📝 Webhook URL: http://localhost:${port}/webhook`);
-
   console.log(`[${getTimestamp()}] ❤️  Health check: http://localhost:${port}/health`);
-
   console.log(`[${getTimestamp()}] 🎯 Ready to handle task completion actions!`);
-
 });
-
-
 module.exports = app;
