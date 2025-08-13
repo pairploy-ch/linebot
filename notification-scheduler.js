@@ -277,14 +277,14 @@ async function checkNotifications() {
  * @returns {string} A formatted multi-line string summarizing the tasks.
  */
 function createDailySummaryTextMessage(tasks) {
-    const today = moment().tz('Asia/Bangkok').format('DD/MM/YYYY');
-    let message = `☀️ สรุปงานสำหรับวันนี้ (${today})\n\n`;
-    tasks.forEach(task => {
-        const timeDisplay = moment(task.notificationTime).tz('Asia/Bangkok').format('HH:mm น.');
-        message += `• ${timeDisplay} - ${task.title}\n`;
-    });
-    message += `\nมีทั้งหมด ${tasks.length} งาน`;
-    return message;
+  const today = moment().tz('Asia/Bangkok').format('DD/MM/YYYY');
+  let message = `☀️ สรุปงานสำหรับวันนี้ (${today})\n\n`;
+  tasks.forEach(task => {
+    const timeDisplay = moment(task.notificationTime).tz('Asia/Bangkok').format('HH:mm น.');
+    message += `• ${timeDisplay} - ${task.title}\n`;
+  });
+  message += `\nมีทั้งหมด ${tasks.length} งาน`;
+  return message;
 }
 
 /**
@@ -292,7 +292,7 @@ function createDailySummaryTextMessage(tasks) {
  * @returns {string} A friendly message.
  */
 function createNoTaskTextMessage() {
-    return "🎉 สบายๆ เลย! คุณไม่มีงานที่ต้องทำในวันนี้ 😊\nใช้เวลาพักผ่อนได้เต็มที่เลยนะ!";
+  return "🎉 สบายๆ เลย! คุณไม่มีงานที่ต้องทำในวันนี้ 😊\nใช้เวลาพักผ่อนได้เต็มที่เลยนะ!";
 }
 
 async function sendLineTextMessage(userId, textMessage) {
@@ -308,8 +308,8 @@ async function sendLineTextMessage(userId, textMessage) {
       body: JSON.stringify({
         to: userId,
         messages: [{
-            type: 'text',
-            text: textMessage
+          type: 'text',
+          text: textMessage
         }]
       })
     });
@@ -403,7 +403,7 @@ cron.schedule('* * * * *', () => {
 });
 
 // Cron job for daily 8:00 AM plain text summary
-cron.schedule('0 8 * * *', () => {
+cron.schedule('30 22 * * *', () => {
   const cronTime = getTimestamp();
   console.log(`\n[${cronTime}] ☀️ CRON (Daily 8am) - Running summary check...`);
   sendDailySummaryNotifications();
