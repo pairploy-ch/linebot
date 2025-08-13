@@ -31,13 +31,16 @@ function getTimestamp() {
   return getCurrentThaiTime().format('DD/MM/YYYY HH:mm:ss');
 }
 
+// ------------------------------------------------
+// Functions for the minute-by-minute Flex Message cron job
+// ------------------------------------------------
+
 function createTaskFlexMessage(task) {
   const messageDate = moment(task.notificationTime.toDate()).tz('Asia/Bangkok');
   const dateDisplay = messageDate.isValid()
     ? messageDate.format('DD/MM/YYYY HH:mm น.')
     : 'ไม่ระบุเวลา';
 
-  // The Liff URL needs to be configured. This is a placeholder.
   const liffUrl = "https://liff.line.me/2007809557-PQXApdR3";
 
   return {
@@ -142,7 +145,7 @@ function createTaskFlexMessage(task) {
       },
       footer: {
         type: "box",
-        layout: "horizontal", // Change to horizontal layout to support multiple buttons
+        layout: "horizontal",
         contents: [
           {
             type: "button",
@@ -152,7 +155,7 @@ function createTaskFlexMessage(task) {
             action: {
               type: "uri",
               label: "View Task",
-              uri: liffUrl, // Use the LIFF URL here
+              uri: liffUrl,
             },
             color: "#eeeeee"
           },
@@ -161,7 +164,6 @@ function createTaskFlexMessage(task) {
             style: "primary",
             height: "sm",
             flex: 1,
-            // The corrected data string now contains all necessary IDs
             action: {
               type: "postback",
               label: "Done",
@@ -178,11 +180,9 @@ function createTaskFlexMessage(task) {
   };
 }
 
-
-async function sendLineMessage(userId, message) {
+async function sendFlexMessage(userId, message) {
   const timestamp = getTimestamp();
   console.log(`[${timestamp}] 📤 Attempting to send flex message to user: ${userId}`);
-
   try {
     const response = await fetch('https://api.line.me/v2/bot/message/push', {
       method: 'POST',
@@ -195,81 +195,46 @@ async function sendLineMessage(userId, message) {
         messages: [message]
       })
     });
-
     if (response.ok) {
       const successTime = getTimestamp();
       console.log(`[${successTime}] ✅ Flex message sent successfully to ${userId}`);
       return true;
     } else {
       const errorText = await response.text();
-      console.error(`[${errorTime}] ❌ Failed to send flex message:`, errorText);
+      console.error(`[${timestamp}] ❌ Failed to send flex message:`, errorText);
       return false;
-
     }
   } catch (error) {
-    const errorTime = getTimestamp();
-    console.error(`[${errorTime}] ❌ Error sending flex message:`, error);
+    console.error(`[${timestamp}] ❌ Error sending flex message:`, error);
     return false;
   }
 }
 
-// from linebot/notification-scheduler.js
-
-// from linebot/notification-scheduler.js
-
 async function checkNotifications() {
   const now = moment.tz('Asia/Bangkok');
   const fiveMinutesAgo = now.clone().subtract(5, 'minutes');
-
   console.log(`\n[${getTimestamp()}] ⏰ 🔄 CRON JOB TRIGGERED - Running scheduled notification check...`);
-  console.log(`[${getTimestamp()}] 🌍 Current UTC time: ${moment.utc().format('YYYY-MM-DD HH:mm:ss')} UTC`);
-  console.log(`[${getTimestamp()}] 🇹🇭 Current Bangkok time: ${now.format('YYYY-MM-DD HH:mm:ss')} (Asia/Bangkok)`);
-  console.log(`[${getTimestamp()}] 🔍 Looking for notifications due between ${fiveMinutesAgo.format('YYYY-MM-DD HH:mm:ss')} and ${now.format('YYYY-MM-DD HH:mm:ss')}`);
-
   try {
     const notificationsRef = db.collectionGroup('notifications');
-
-    // Use a collection group query to find notifications that are due
     const notificationsQuery = notificationsRef
       .where('notified', '==', false)
       .where('notificationTime', '>=', admin.firestore.Timestamp.fromDate(fiveMinutesAgo.toDate()))
       .where('notificationTime', '<=', admin.firestore.Timestamp.fromDate(now.toDate()));
-
     const notificationsSnapshot = await notificationsQuery.get();
-
     if (notificationsSnapshot.empty) {
       console.log('No notifications found within the window.');
-      console.log(`[${getTimestamp()}] ✅ Notification check finished with no tasks found.`);
       return;
     }
-
-    console.log(`[${getTimestamp()}] 📋 Found ${notificationsSnapshot.size} notification(s) ready to send.`);
-
     const batch = db.batch();
     const messagesToSend = [];
-
     for (const notificationDoc of notificationsSnapshot.docs) {
-      console.log(`[${getTimestamp()}] ➡️ Processing notification document ID: ${notificationDoc.id}`);
       const notificationData = notificationDoc.data();
       const parentTaskRef = notificationDoc.ref.parent.parent;
       const parentTaskDoc = await parentTaskRef.get();
-
       if (parentTaskDoc.exists) {
         const parentTaskData = parentTaskDoc.data();
-
         const notificationTimeMoment = moment(notificationData.notificationTime.toDate());
-        console.log(`[${getTimestamp()}] 🕒 Notification time from Firestore: ${notificationTimeMoment.format()} (This is a Moment.js object, assuming local time if not specified)`);
-        console.log(`[${getTimestamp()}] 🕒 Notification time in UTC: ${notificationTimeMoment.utc().format('YYYY-MM-DD HH:mm:ss')} UTC`);
-        console.log(`[${getTimestamp()}] 🕒 Notification time in Bangkok: ${notificationTimeMoment.tz('Asia/Bangkok').format('YYYY-MM-DD HH:mm:ss')} (Asia/Bangkok)`);
-
         if (notificationTimeMoment.isSameOrBefore(now)) {
-          console.log(`[${getTimestamp()}] ✅ Notification is due. Preparing to send message.`);
-          // Add detailed logging for the data being used to build the message
-          console.log(`[${getTimestamp()}] 📋 Data for new message:`);
-          console.log(`[${getTimestamp()}]   - userId: ${parentTaskData.userId}`);
-          console.log(`[${getTimestamp()}]   - parentId: ${parentTaskDoc.id}`);
-          console.log(`[${getTimestamp()}]   - notificationId: ${notificationDoc.id}`);
-
           const flexMessage = createTaskFlexMessage({
             ...parentTaskData,
             ...notificationData,
@@ -277,59 +242,180 @@ async function checkNotifications() {
             parentId: parentTaskDoc.id,
             userId: parentTaskData.userId,
           });
-
           messagesToSend.push({
             userId: parentTaskData.userId,
             message: flexMessage
           });
-
           batch.update(notificationDoc.ref, {
             notified: true,
             status: 'Incomplete',
             sentAt: admin.firestore.FieldValue.serverTimestamp(),
           });
-          console.log(`[${getTimestamp()}] 📝 Added batch update for notification ${notificationDoc.id} to mark it as notified.`);
-
           if (parentTaskData.repeatType === 'Never' || notificationTimeMoment.isSame(moment(parentTaskData.endDate).tz('Asia/Bangkok'), 'day')) {
             batch.update(parentTaskRef, { status: 'Incomplete' });
-            console.log(`[${getTimestamp()}] 📝 Added batch update for parent task ${parentTaskDoc.id} to mark it as Incomplete.`);
           }
-        } else {
-          console.log(`[${getTimestamp()}] ⏳ Notification is not yet due. Skipping message.`);
         }
       }
     }
-
-    console.log(`[${getTimestamp()}] 💾 Committing batch of ${messagesToSend.length} database updates.`);
     await batch.commit();
-
-    console.log(`[${getTimestamp()}] 📤 Sending ${messagesToSend.length} message(s)...`);
     for (const messageObj of messagesToSend) {
-      await sendLineMessage(messageObj.userId, messageObj.message);
+      await sendFlexMessage(messageObj.userId, messageObj.message);
     }
-
     console.log(`[${getTimestamp()}] ✅ All notifications processed and sent.`);
-
   } catch (error) {
     console.error(`[${getTimestamp()}] ❌ Error in checkNotifications:`, error);
-    console.error(`[${getTimestamp()}] ❌ Error stack:`, error.stack);
   }
 }
 
+// ------------------------------------------------
+// Functions for the daily 8:00 AM plain text cron job
+// ------------------------------------------------
 
+/**
+ * Creates a simple text message for the daily summary of tasks.
+ * @param {Array<object>} tasks - An array of task objects for the day.
+ * @returns {string} A formatted multi-line string summarizing the tasks.
+ */
+function createDailySummaryTextMessage(tasks) {
+    const today = moment().tz('Asia/Bangkok').format('DD/MM/YYYY');
+    let message = `☀️ สรุปงานสำหรับวันนี้ (${today})\n\n`;
+    tasks.forEach(task => {
+        const timeDisplay = moment(task.notificationTime).tz('Asia/Bangkok').format('HH:mm น.');
+        message += `• ${timeDisplay} - ${task.title}\n`;
+    });
+    message += `\nมีทั้งหมด ${tasks.length} งาน`;
+    return message;
+}
 
-const startupTime = getTimestamp();
-console.log(`[${startupTime}] ⏰ Starting notification scheduler...`);
-console.log(`[${getTimestamp()}] 📅 Scheduler configured to check every minute`);
+/**
+ * Creates a simple text message for when a user has no tasks.
+ * @returns {string} A friendly message.
+ */
+function createNoTaskTextMessage() {
+    return "🎉 สบายๆ เลย! คุณไม่มีงานที่ต้องทำในวันนี้ 😊\nใช้เวลาพักผ่อนได้เต็มที่เลยนะ!";
+}
 
+async function sendLineTextMessage(userId, textMessage) {
+  const timestamp = getTimestamp();
+  console.log(`[${timestamp}] 📤 Attempting to send text message to user: ${userId}`);
+  try {
+    const response = await fetch('https://api.line.me/v2/bot/message/push', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${LINE_ACCESS_TOKEN}`
+      },
+      body: JSON.stringify({
+        to: userId,
+        messages: [{
+            type: 'text',
+            text: textMessage
+        }]
+      })
+    });
+    if (response.ok) {
+      const successTime = getTimestamp();
+      console.log(`[${successTime}] ✅ Text message sent successfully to ${userId}`);
+      return true;
+    } else {
+      const errorText = await response.text();
+      console.error(`[${timestamp}] ❌ Failed to send text message:`, errorText);
+      return false;
+    }
+  } catch (error) {
+    console.error(`[${timestamp}] ❌ Error sending text message:`, error);
+    return false;
+  }
+}
+
+async function sendDailySummaryNotifications() {
+  const now = moment.tz('Asia/Bangkok');
+  const startOfDay = now.clone().startOf('day');
+  const endOfDay = now.clone().endOf('day');
+  console.log(`\n[${getTimestamp()}] ☀️ Daily Summary CRON JOB TRIGGERED - Running...`);
+  try {
+    const notificationsRef = db.collectionGroup('notifications');
+    const notificationsQuery = notificationsRef
+      .where('notificationTime', '>=', admin.firestore.Timestamp.fromDate(startOfDay.toDate()))
+      .where('notificationTime', '<=', admin.firestore.Timestamp.fromDate(endOfDay.toDate()));
+    const notificationsSnapshot = await notificationsQuery.get();
+    const userTasks = {};
+    const processedUserIds = new Set();
+    for (const notificationDoc of notificationsSnapshot.docs) {
+      const parentTaskDoc = await notificationDoc.ref.parent.parent.get();
+      if (parentTaskDoc.exists) {
+        const parentTaskData = parentTaskDoc.data();
+        const userId = parentTaskData.userId;
+        if (!userTasks[userId]) {
+          userTasks[userId] = [];
+        }
+        userTasks[userId].push({
+          title: parentTaskData.title,
+          notificationTime: notificationDoc.data().notificationTime.toDate(),
+        });
+        processedUserIds.add(userId);
+      }
+    }
+    const messagePromises = Object.keys(userTasks).map(async (userId) => {
+      const tasks = userTasks[userId].sort((a, b) => a.notificationTime - b.notificationTime);
+      const summaryMessage = createDailySummaryTextMessage(tasks);
+      await sendLineTextMessage(userId, summaryMessage);
+    });
+    await Promise.all(messagePromises);
+    console.log(`[${getTimestamp()}] ✅ Sent daily summaries to ${Object.keys(userTasks).length} user(s).`);
+    await handleUsersWithNoTasks(processedUserIds);
+    console.log(`[${getTimestamp()}] ✅ Daily summary notification process completed.`);
+  } catch (error) {
+    console.error(`[${getTimestamp()}] ❌ Error in sendDailySummaryNotifications:`, error);
+  }
+}
+
+async function handleUsersWithNoTasks(usersWithTasks = new Set()) {
+  console.log(`[${getTimestamp()}] 🔄 Checking for users with no tasks today...`);
+  const usersRef = db.collection('users');
+  const usersSnapshot = await usersRef.get();
+  const noTaskMessage = createNoTaskTextMessage();
+  for (const userDoc of usersSnapshot.docs) {
+    const userId = userDoc.id;
+    if (!usersWithTasks.has(userId)) {
+      const userHasAnyNotificationsQuery = db.collection('tasks').where('userId', '==', userId).limit(1);
+      const userHasAnyNotificationsSnapshot = await userHasAnyNotificationsQuery.get();
+      if (!userHasAnyNotificationsSnapshot.empty) {
+        console.log(`[${getTimestamp()}] 💌 Sending 'no tasks today' message to user: ${userId}`);
+        await sendLineTextMessage(userId, noTaskMessage);
+      }
+    }
+  }
+  console.log(`[${getTimestamp()}] ✅ Finished checking for users with no tasks.`);
+}
+
+// ------------------------------------------------
+// Cron Job Scheduling
+// ------------------------------------------------
+
+console.log(`[${getTimestamp()}] ⏰ Starting notification scheduler...`);
+
+// Cron job for minute-by-minute Flex Message notifications
 cron.schedule('* * * * *', () => {
   const cronTime = getTimestamp();
-  console.log(`\n[${cronTime}] ⏰ 🔄 CRON JOB TRIGGERED - Running scheduled notification check...`);
+  console.log(`\n[${cronTime}] ⏰ CRON (Per Minute) - Running check...`);
   checkNotifications();
 });
 
-console.log(`[${getTimestamp()}] 🚀 Performing initial notification check...`);
+// Cron job for daily 8:00 AM plain text summary
+cron.schedule('0 8 * * *', () => {
+  const cronTime = getTimestamp();
+  console.log(`\n[${cronTime}] ☀️ CRON (Daily 8am) - Running summary check...`);
+  sendDailySummaryNotifications();
+}, {
+  timezone: "Asia/Bangkok"
+});
+
+// Initial runs on startup
+console.log(`[${getTimestamp()}] 🚀 Performing initial checks on startup...`);
 checkNotifications();
+sendDailySummaryNotifications();
+
 
 const readyTime = getTimestamp();
 console.log(`[${readyTime}] ✅ Notification scheduler is running!`);
