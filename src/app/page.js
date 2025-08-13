@@ -62,7 +62,7 @@ export default function TaskManager() {
     status: "Upcoming",
   });
 
-  const tabs = ["Upcoming", "Completed", "Overdue"];
+  const tabs = ["Upcoming", "Completed", "Incomplete"];
   const upcomingFilters = ["Today", "This Week", "All"];
 
   // Helper functions for date filtering
@@ -520,7 +520,7 @@ export default function TaskManager() {
         return "bg-blue-500";
       case "Completed":
         return "bg-green-500";
-      case "Overdue":
+      case "Incomplete":
         return "bg-red-500";
       default:
         return "bg-gray-500";
@@ -610,7 +610,7 @@ export default function TaskManager() {
                 <div
                   key={index}
                   className={`w-2 h-2 rounded-full ${task.status === 'Completed' ? 'bg-green-400' :
-                    task.status === 'Overdue' ? 'bg-red-400' : 'bg-blue-400'
+                    task.status === 'Incomplete' ? 'bg-red-400' : 'bg-blue-400'
                     }`}
                 />
               ))}
@@ -775,7 +775,7 @@ export default function TaskManager() {
                               </button>
                             </>
                           )}
-                          {(task.status === "Completed" || task.status === "Overdue") && (
+                          {(task.status === "Completed" || task.status === "Incomplete") && (
                             <div className="flex space-x-2">
                               <button
                                 onClick={() => handleDeleteTask(task)}
@@ -1174,7 +1174,7 @@ export default function TaskManager() {
               >
                 <option value="Upcoming">Upcoming</option>
                 <option value="Completed">Completed</option>
-                <option value="Overdue">Overdue</option>
+                <option value="Incomplete">Incomplete</option>
               </select>
               <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
             </div>
@@ -1379,7 +1379,7 @@ export default function TaskManager() {
                           </button>
                         </div>
                       )}
-                      {(task.status === "Completed" || task.status === "Overdue") && (
+                      {(task.status === "Completed" || task.status === "Incomplete") && (
                         <div className="flex space-x-2">
                           <button
                             onClick={() => handleDeleteTask(task)}
