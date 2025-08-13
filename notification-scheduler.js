@@ -403,7 +403,7 @@ cron.schedule('* * * * *', () => {
 });
 
 // Cron job for daily 8:00 AM plain text summary
-cron.schedule('44 22 * * *', () => {
+cron.schedule('15 23 * * *', () => {
   const cronTime = getTimestamp();
   console.log(`\n[${cronTime}] ☀️ CRON (Daily 8am) - Running summary check...`);
   sendDailySummaryNotifications();
