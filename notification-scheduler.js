@@ -213,14 +213,28 @@ async function sendFlexMessage(userId, message) {
 async function checkNotifications() {
   const now = moment.tz('Asia/Bangkok');
   const fiveMinutesAgo = now.clone().subtract(5, 'minutes');
-  console.log(`\n[${getTimestamp()}] ⏰ 🔄 CRON JOB TRIGGERED - Running scheduled notification check...`);
+  console.log(`\n[${getTimestamp()}] ⏰ 🔄 CRON JOB TRIGGERED5555555555 - Running scheduled notification check...`);
+  console.log(`[${getTimestamp()}] 🔍 Looking for notifications due between ${fiveMinutesAgo.format()} and ${now.format()}`);
+
   try {
     const notificationsRef = db.collectionGroup('notifications');
     const notificationsQuery = notificationsRef
       .where('notified', '==', false)
       .where('notificationTime', '>=', admin.firestore.Timestamp.fromDate(fiveMinutesAgo.toDate()))
       .where('notificationTime', '<=', admin.firestore.Timestamp.fromDate(now.toDate()));
+
+    // --- ADDED DEBUG LOGGING ---
+    console.log(`[${getTimestamp()}] ⚙️ Query details for minute check:`);
+    console.log(`[${getTimestamp()}]  - Collection Group: 'notifications'`);
+    console.log(`[${getTimestamp()}]  - Filter 1: notified == false`);
+    console.log(`[${getTimestamp()}]  - Filter 2: notificationTime >= ${fiveMinutesAgo.toISOString()}`);
+    console.log(`[${getTimestamp()}]  - Filter 3: notificationTime <= ${now.toISOString()}`);
+
     const notificationsSnapshot = await notificationsQuery.get();
+
+    // --- ADDED DEBUG LOGGING ---
+    console.log(`[${getTimestamp()}] ✅ Query successful. Found ${notificationsSnapshot.size} results.`);
+
     if (notificationsSnapshot.empty) {
       console.log('No notifications found within the window.');
       return;
@@ -271,11 +285,6 @@ async function checkNotifications() {
 // Functions for the daily 8:00 AM plain text cron job
 // ------------------------------------------------
 
-/**
- * Creates a simple text message for the daily summary of tasks.
- * @param {Array<object>} tasks - An array of task objects for the day.
- * @returns {string} A formatted multi-line string summarizing the tasks.
- */
 function createDailySummaryTextMessage(tasks) {
   const today = moment().tz('Asia/Bangkok').format('DD/MM/YYYY');
   let message = `☀️ สรุปงานสำหรับวันนี้ (${today})\n\n`;
@@ -287,10 +296,6 @@ function createDailySummaryTextMessage(tasks) {
   return message;
 }
 
-/**
- * Creates a simple text message for when a user has no tasks.
- * @returns {string} A friendly message.
- */
 function createNoTaskTextMessage() {
   return "🎉 สบายๆ เลย! คุณไม่มีงานที่ต้องทำในวันนี้ 😊\nใช้เวลาพักผ่อนได้เต็มที่เลยนะ!";
 }
@@ -333,12 +338,31 @@ async function sendDailySummaryNotifications() {
   const startOfDay = now.clone().startOf('day');
   const endOfDay = now.clone().endOf('day');
   console.log(`\n[${getTimestamp()}] ☀️ Daily Summary CRON JOB TRIGGERED - Running...`);
+  console.log(`[${getTimestamp()}] 🔍 Looking for tasks for today, ${now.format()}`);
+
   try {
     const notificationsRef = db.collectionGroup('notifications');
     const notificationsQuery = notificationsRef
       .where('notificationTime', '>=', admin.firestore.Timestamp.fromDate(startOfDay.toDate()))
       .where('notificationTime', '<=', admin.firestore.Timestamp.fromDate(endOfDay.toDate()));
+
+    // --- ADDED DEBUG LOGGING ---
+    console.log(`[${getTimestamp()}] ⚙️ Query details for daily summary:`);
+    console.log(`[${getTimestamp()}]  - Collection Group: 'notifications'`);
+    console.log(`[${getTimestamp()}]  - Filter 1: notificationTime >= ${startOfDay.toISOString()}`);
+    console.log(`[${getTimestamp()}]  - Filter 2: notificationTime <= ${endOfDay.toISOString()}`);
+
     const notificationsSnapshot = await notificationsQuery.get();
+
+    // --- ADDED DEBUG LOGGING ---
+    console.log(`[${getTimestamp()}] ✅ Query successful. Found ${notificationsSnapshot.size} results.`);
+
+    if (notificationsSnapshot.empty) {
+      console.log(`[${getTimestamp()}] 📋 No notifications found for today.`);
+      await handleUsersWithNoTasks(new Set());
+      console.log(`[${getTimestamp()}] ✅ Daily summary check finished.`);
+      return;
+    }
     const userTasks = {};
     const processedUserIds = new Set();
     for (const notificationDoc of notificationsSnapshot.docs) {
@@ -403,7 +427,7 @@ cron.schedule('* * * * *', () => {
 });
 
 // Cron job for daily 8:00 AM plain text summary
-cron.schedule('56 23 * * *', () => {
+cron.schedule('0 8 * * *', () => {
   const cronTime = getTimestamp();
   console.log(`\n[${cronTime}] ☀️ CRON (Daily 8am) - Running summary check...`);
   sendDailySummaryNotifications();
