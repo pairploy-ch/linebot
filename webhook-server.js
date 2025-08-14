@@ -166,18 +166,31 @@ async function summarizeDateRangeWithAI(prompt) {
 async function handleSummarizeTask(db, taskData, lineUserId) {
   console.log(`[${getTimestamp()}] 📝 Starting task summary for user: ${lineUserId}`);
 
-  // Ensure the dates are Moment objects for correct comparison and formatting
-  const startDate = moment(taskData.start_date);
-  const endDate = moment(taskData.end_date);
-  const rangeType = taskData.range_type;
+  let startDate, endDate, rangeType;
 
   try {
+    // Accept either prebuilt Moment objects OR "YYYY, M, D, HH, mm, ss, micros" strings
+    const asMoment = (val) => moment.isMoment(val) ? val : null;
+
+    const parseCsv = (csv) => {
+      const [Y, M, D, h, m, s] = csv.split(',').map(x => parseInt(String(x).trim(), 10));
+      // micros not needed by moment; milliseconds are enough for the query window
+      return moment.tz({
+        year: Y, month: M - 1, day: D, hour: h, minute: m, second: s, millisecond: 0
+      }, "Asia/Bangkok");
+    };
+
+    startDate = asMoment(taskData.start_date) || parseCsv(taskData.start_date);
+    endDate = asMoment(taskData.end_date) || parseCsv(taskData.end_date).millisecond(999);
+
+    rangeType = taskData.range_type;
+
+    // ---------------- existing code continues from here ----------------
     const userDocRef = db.collection('users').doc(lineUserId);
     const tasksRef = userDocRef.collection('tasks');
     const foundTasks = await tasksRef.stream();
 
     const allNotifications = [];
-
     for await (const taskDoc of foundTasks) {
       const notificationsRef = taskDoc.reference.collection('notifications');
       const notificationsQuery = notificationsRef
@@ -208,27 +221,25 @@ async function handleSummarizeTask(db, taskData, lineUserId) {
       const startMonth = moment(startDate).locale('th').format('MMMM');
       const endMonth = moment(endDate).locale('th').format('MMMM');
 
-      // --- This part creates the summary line ---
-      if (rangeType === 1) { // Single day
+      if (rangeType === 1) {
         message = `วันที่ ${moment(startDate).locale('th').format('DD MMMM')} คุณมีทั้งหมด ${allNotifications.length} งาน\n\n`;
-      } else { // Multiple days
+      } else {
         message = `ในระหว่างวันที่ ${moment(startDate).locale('th').format('DD')} ${startMonth} ถึง วันที่ ${moment(endDate).locale('th').format('DD')} ${endMonth} คุณมีทั้งหมด ${allNotifications.length} งาน\n\n`;
       }
 
-      // --- This part appends the task list ---
       allNotifications.forEach((task, i) => {
         const formattedDate = moment(task.notificationTime).locale('th').format('DD MMMM');
         message += `${i + 1}. ${task.title} : ${formattedDate}\n`;
       });
     }
 
-    return { success: true, message: message };
-
+    return { success: true, message };
   } catch (error) {
     console.error(`[${getTimestamp()}] ❌ Failed to summarize tasks:`, error);
     return { success: false, message: "❌ เกิดข้อผิดพลาดในการสรุปงาน กรุณาลองใหม่" };
   }
 }
+
 
 async function createTaskWithAI(prompt) {
   const now = moment().tz("Asia/Bangkok");
