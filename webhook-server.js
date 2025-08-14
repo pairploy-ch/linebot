@@ -163,6 +163,34 @@ async function summarizeDateRangeWithAI(prompt) {
   return range_analysis;
 }
 
+function convertAiRangeToThaiMicros(aiRange) {
+  const parseCSV = (csv) => {
+    // csv like: "2025, 8, 14, 00, 00, 00, 00000"
+    const [Y, M, D, h, m, s] = String(csv).split(',').map(v => parseInt(v.trim(), 10));
+    return moment.tz(
+      { year: Y, month: M - 1, day: D, hour: h, minute: m, second: s, millisecond: 0 },
+      "Asia/Bangkok"
+    );
+  };
+
+  const toThaiMicrosString = (m, micros) => {
+    const datePart = m.format("YYYY-MM-DD HH:mm:ss");
+    const offset = m.format("Z"); // +07:00
+    const microStr = String(micros).padStart(6, "0"); // 6 digits
+    return `${datePart}.${microStr}${offset}`;
+  };
+
+  const startM = moment.isMoment(aiRange.start_date) ? aiRange.start_date : parseCSV(aiRange.start_date);
+  const endM = moment.isMoment(aiRange.end_date) ? aiRange.end_date : parseCSV(aiRange.end_date);
+
+  return {
+    // for Python Firestore filter comparisons:
+    start_date: toThaiMicrosString(startM, 0),        // ...000000+07:00
+    end_date: toThaiMicrosString(endM, 999999),     // ...999999+07:00
+    range_type: aiRange.range_type
+  };
+}
+
 async function handleSummarizeTask(db, taskData, lineUserId) {
   console.log(`[${getTimestamp()}] 📝 Starting task summary for user: ${lineUserId}`);
 
@@ -170,20 +198,13 @@ async function handleSummarizeTask(db, taskData, lineUserId) {
 
   try {
     // Accept either prebuilt Moment objects OR "YYYY, M, D, HH, mm, ss, micros" strings
-    const asMoment = (val) => moment.isMoment(val) ? val : null;
 
-    const parseCsv = (csv) => {
-      const [Y, M, D, h, m, s] = csv.split(',').map(x => parseInt(String(x).trim(), 10));
-      // micros not needed by moment; milliseconds are enough for the query window
-      return moment.tz({
-        year: Y, month: M - 1, day: D, hour: h, minute: m, second: s, millisecond: 0
-      }, "Asia/Bangkok");
-    };
 
-    startDate = asMoment(taskData.start_date) || parseCsv(taskData.start_date);
-    endDate = asMoment(taskData.end_date) || parseCsv(taskData.end_date).millisecond(999);
+    const sd = taskData.start_date
+    const ed = taskData.end_date
 
-    rangeType = taskData.range_type;
+
+    rangeType = taskData.range_type
 
     // ---------------- existing code continues from here ----------------
     const userDocRef = db.collection('users').doc(lineUserId);
@@ -194,8 +215,8 @@ async function handleSummarizeTask(db, taskData, lineUserId) {
     for await (const taskDoc of foundTasks) {
       const notificationsRef = taskDoc.reference.collection('notifications');
       const notificationsQuery = notificationsRef
-        .where('notificationTime', '>=', admin.firestore.Timestamp.fromDate(startDate.toDate()))
-        .where('notificationTime', '<=', admin.firestore.Timestamp.fromDate(endDate.toDate()))
+        .where('notificationTime', '>=', admin.firestore.Timestamp.fromDate(sd))
+        .where('notificationTime', '<=', admin.firestore.Timestamp.fromDate(ed))
         .where('status', '!=', 'Completed');
 
       const notificationsSnapshot = await notificationsQuery.get();
@@ -531,33 +552,36 @@ app.post("/webhook", (req, res) => {
               // ...
             }
 
-            // --- ADDED FIX FOR MOMENT WARNING ---
-            const startDateParts = aiDateRange.start_date.split(',').map(s => parseInt(s.trim()));
-            const endDateParts = aiDateRange.end_date.split(',').map(s => parseInt(s.trim()));
+            const aiOutputCorrectFormat = convertAiRangeToThaiMicros(aiOutputJson)
 
-            const formattedTaskData = {
-              startDate: moment().tz("Asia/Bangkok").set({
-                year: startDateParts[0],
-                month: startDateParts[1] - 1, // moment months are 0-indexed
-                date: startDateParts[2],
-                hour: startDateParts[3],
-                minute: startDateParts[4],
-                second: startDateParts[5],
-                millisecond: 0
-              }),
-              endDate: moment().tz("Asia/Bangkok").set({
-                year: endDateParts[0],
-                month: endDateParts[1] - 1, // moment months are 0-indexed
-                date: endDateParts[2],
-                hour: endDateParts[3],
-                minute: endDateParts[4],
-                second: endDateParts[5],
-                millisecond: 999
-              }),
-              rangeType: aiDateRange.range_type
-            };
+
+            // --- ADDED FIX FOR MOMENT WARNING ---
+            // const startDateParts = aiDateRange.start_date.split(',').map(s => parseInt(s.trim()));
+            // const endDateParts = aiDateRange.end_date.split(',').map(s => parseInt(s.trim()));
+
+            // const formattedTaskData = {
+            //   startDate: moment().tz("Asia/Bangkok").set({
+            //     year: startDateParts[0],
+            //     month: startDateParts[1] - 1, // moment months are 0-indexed
+            //     date: startDateParts[2],
+            //     hour: startDateParts[3],
+            //     minute: startDateParts[4],
+            //     second: startDateParts[5],
+            //     millisecond: 0
+            //   }),
+            //   endDate: moment().tz("Asia/Bangkok").set({
+            //     year: endDateParts[0],
+            //     month: endDateParts[1] - 1, // moment months are 0-indexed
+            //     date: endDateParts[2],
+            //     hour: endDateParts[3],
+            //     minute: endDateParts[4],
+            //     second: endDateParts[5],
+            //     millisecond: 999
+            //   }),
+            //   rangeType: aiDateRange.range_type
+            // };
             // Call the new function to get the summary
-            const summaryResult = await handleSummarizeTask(db, aiDateRange, event.source.userId);
+            const summaryResult = await handleSummarizeTask(db, aiOutputCorrectFormat, event.source.userId);
 
             if (summaryResult.success) {
               const replyMessage = { type: "text", text: summaryResult.message };
