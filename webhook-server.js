@@ -197,9 +197,6 @@ async function handleSummarizeTask(db, taskData, lineUserId) {
   let startDate, endDate, rangeType;
 
   try {
-    // Accept either prebuilt Moment objects OR "YYYY, M, D, HH, mm, ss, micros" strings
-
-
     const sd = taskData.start_date
     const ed = taskData.end_date
 
@@ -208,7 +205,7 @@ async function handleSummarizeTask(db, taskData, lineUserId) {
 
     // ---------------- existing code continues from here ----------------
     const userDocRef = db.collection('users').doc(lineUserId);
-    const tasksRef = userDocRef.collection('tasks');
+    const tasksRef = db.collection('users').collection('tasks');
     const foundTasks = await tasksRef.stream();
 
     const allNotifications = [];
