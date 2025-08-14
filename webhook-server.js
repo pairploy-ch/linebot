@@ -90,6 +90,7 @@ async function classifyMessageWithAI(prompt) {
     
     Categories:
     - create_task: User wants to create a new task or reminder (if it is work, it is; may be no obvious words indicated the desire to create task).
+    - summarize_task: User wants to summarize or list tasks within a specific date range.
     - read_task: User wants to view, list, or check their existing tasks.
     - edit_task: User wants to modify or update a task.
     - delete_task: User wants to delete or cancel a task.
@@ -116,6 +117,117 @@ async function classifyMessageWithAI(prompt) {
   const category = response.choices[0].message.content.trim();
   console.log(`[${getTimestamp()}] 🤖 AI Classified intent: ${category}`);
   return category;
+}
+
+async function summarizeDateRangeWithAI(prompt) {
+  const now = moment().tz("Asia/Bangkok");
+  const currentDate = now.format("dddd DD/MM/YYYY HH.mm");
+
+  const analyzeRangePrompt = `
+รับคำสั่งสรุป "ช่วงวันที่" แล้วตอบเป็น JSON เท่านั้น (ห้ามมีคำอธิบายอื่น)
+
+สกีมา:
+{
+  "start_date": "YYYY, M, D, 00, 00, 00, 00000",
+  "end_date":   "YYYY, M, D, 23, 59, 59, 99999",
+  "range_type": <1 | 2>
+}
+
+เงื่อนไขและกติกา:
+- today date is ${currentDate} (โซนเวลา Asia/Bangkok)
+- ถ้าระบุวันเดียว (single day) ให้:
+  - range_type = 1
+- ถ้าเป็นช่วงหลายวัน (multiple days) ให้:
+  - range_type = 2
+- ถ้าให้ชื่อเดือน/สัปดาห์โดยไม่ระบุวัน ให้ตีความเป็นช่วงทั้งหมดของหน่วยนั้น:
+  - เดือน: จากวันแรกของเดือนนี้ถึงวันสุดท้ายของเดือนนี้
+  - สัปดาห์: เริ่มจากวันนี้ และรับไปอีก 7 วัน
+- ถ้าไม่พบวันที่จากข้อความ ให้ตอบ:
+  {
+    "error": "date"
+  }
+- ห้ามมีฟิลด์อื่นนอกเหนือจากที่กำหนด
+
+ผู้ใช้: "${prompt}"
+`;
+
+  const response = await openaiClient.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: analyzeRangePrompt }],
+    max_tokens: 200,
+    temperature: 0,
+  });
+
+  const range_analysis = response.choices[0].message.content.trim();
+  console.log(`[${getTimestamp()}] 🤖 AI Date Range Analysis: ${range_analysis}`);
+  return range_analysis;
+}
+
+async function handleSummarizeTask(taskData, lineUserId) {
+  console.log(`[${getTimestamp()}] 📝 Starting task summary for user: ${lineUserId}`);
+
+  // Ensure the dates are Moment objects for correct comparison and formatting
+  const startDate = moment(taskData.start_date);
+  const endDate = moment(taskData.end_date);
+  const rangeType = taskData.range_type;
+
+  try {
+    const userDocRef = db.collection('users').doc(lineUserId);
+    const tasksRef = userDocRef.collection('tasks');
+    const foundTasks = await tasksRef.stream();
+
+    const allNotifications = [];
+
+    for await (const taskDoc of foundTasks) {
+      const notificationsRef = taskDoc.reference.collection('notifications');
+      const notificationsQuery = notificationsRef
+        .where('notificationTime', '>=', admin.firestore.Timestamp.fromDate(startDate.toDate()))
+        .where('notificationTime', '<=', admin.firestore.Timestamp.fromDate(endDate.toDate()))
+        .where('status', '!=', 'Completed');
+
+      const notificationsSnapshot = await notificationsQuery.get();
+      for (const notiDoc of notificationsSnapshot.docs) {
+        const parentTaskRef = notiDoc.ref.parent.parent;
+        const parentTaskDoc = await parentTaskRef.get();
+        const parentTaskData = parentTaskDoc.data();
+        const notificationData = notiDoc.data();
+
+        allNotifications.push({
+          title: parentTaskData.title,
+          notificationTime: notificationData.notificationTime.toDate()
+        });
+      }
+    }
+
+    allNotifications.sort((a, b) => a.notificationTime - b.notificationTime);
+
+    let message = '';
+    if (allNotifications.length === 0) {
+      message = "🎉 ในช่วงเวลาที่คุณระบุ ไม่มีงานที่ต้องทำค่ะ";
+    } else {
+      const startMonth = moment(startDate).locale('th').format('MMMM');
+      const endMonth = moment(endDate).locale('th').format('MMMM');
+
+      // --- This part creates the summary line ---
+      if (rangeType === 1) { // Single day
+        message = `วันที่ ${moment(startDate).locale('th').format('DD MMMM')} คุณมีทั้งหมด ${allNotifications.length} งาน\n\n`;
+      } else { // Multiple days
+        message = `ในระหว่างวันที่ ${moment(startDate).locale('th').format('DD')} ${startMonth} ถึง วันที่ ${moment(endDate).locale('th').format('DD')} ${endMonth} คุณมีทั้งหมด ${allNotifications.length} งาน\n\n`;
+      }
+
+      // --- This part appends the task list ---
+      allNotifications.forEach((task, i) => {
+        const formattedDate = moment(task.notificationTime).locale('th').format('DD MMMM');
+        message += `${i + 1}. ${task.title} : ${formattedDate}\n`;
+      });
+    }
+
+    return { success: true, message: message };
+
+  } catch (error) {
+    console.error(`[${getTimestamp()}] ❌ Failed to summarize tasks:`, error);
+    return { success: false, message: "❌ เกิดข้อผิดพลาดในการสรุปงาน กรุณาลองใหม่" };
+  }
 }
 
 async function createTaskWithAI(prompt) {
@@ -394,6 +506,36 @@ app.post("/webhook", (req, res) => {
           } catch (error) {
             console.error(`[${getTimestamp()}] ❌ Error parsing AI response or creating task:`, error);
             const replyMessage = { type: "text", text: "❌ เกิดข้อผิดพลาดในการสร้างงาน กรุณาลองใหม่" };
+            await sendReplyMessage(event.replyToken, [replyMessage]);
+          }
+        }
+
+        else if (intent === 'summarize_task') {
+          const aiOutputJson = await summarizeDateRangeWithAI(aiPrompt);
+          try {
+            const cleanJsonString = aiOutputJson.replace(/```json|```/g, '').trim();
+            const aiDateRange = JSON.parse(cleanJsonString);
+
+            if (aiDateRange.error) {
+              const replyMessage = { type: "text", text: "❌ ขออภัยค่ะ Alin ไม่สามารถหาช่วงวันที่ที่ถูกต้องจากข้อความได้" };
+              await sendReplyMessage(event.replyToken, [replyMessage]);
+              return;
+            }
+
+            // Call the new function to get the summary
+            const summaryResult = await handleSummarizeTask(aiDateRange, event.source.userId);
+
+            if (summaryResult.success) {
+              const replyMessage = { type: "text", text: summaryResult.message };
+              await sendReplyMessage(event.replyToken, [replyMessage]);
+            } else {
+              const replyMessage = { type: "text", text: summaryResult.message };
+              await sendReplyMessage(event.replyToken, [replyMessage]);
+            }
+
+          } catch (error) {
+            console.error(`[${getTimestamp()}] ❌ Error parsing AI response or summarizing tasks:`, error);
+            const replyMessage = { type: "text", text: "❌ เกิดข้อผิดพลาดในการสรุปงาน กรุณาลองใหม่" };
             await sendReplyMessage(event.replyToken, [replyMessage]);
           }
         }
