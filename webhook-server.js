@@ -163,7 +163,7 @@ async function summarizeDateRangeWithAI(prompt) {
   return range_analysis;
 }
 
-async function handleSummarizeTask(taskData, lineUserId) {
+async function handleSummarizeTask(db, taskData, lineUserId) {
   console.log(`[${getTimestamp()}] 📝 Starting task summary for user: ${lineUserId}`);
 
   // Ensure the dates are Moment objects for correct comparison and formatting
@@ -517,13 +517,36 @@ app.post("/webhook", (req, res) => {
             const aiDateRange = JSON.parse(cleanJsonString);
 
             if (aiDateRange.error) {
-              const replyMessage = { type: "text", text: "❌ ขออภัยค่ะ Alin ไม่สามารถหาช่วงวันที่ที่ถูกต้องจากข้อความได้" };
-              await sendReplyMessage(event.replyToken, [replyMessage]);
-              return;
+              // ...
             }
 
+            // --- ADDED FIX FOR MOMENT WARNING ---
+            const startDateParts = aiDateRange.start_date.split(',').map(s => parseInt(s.trim()));
+            const endDateParts = aiDateRange.end_date.split(',').map(s => parseInt(s.trim()));
+
+            const formattedTaskData = {
+              startDate: moment().tz("Asia/Bangkok").set({
+                year: startDateParts[0],
+                month: startDateParts[1] - 1, // moment months are 0-indexed
+                date: startDateParts[2],
+                hour: startDateParts[3],
+                minute: startDateParts[4],
+                second: startDateParts[5],
+                millisecond: 0
+              }),
+              endDate: moment().tz("Asia/Bangkok").set({
+                year: endDateParts[0],
+                month: endDateParts[1] - 1, // moment months are 0-indexed
+                date: endDateParts[2],
+                hour: endDateParts[3],
+                minute: endDateParts[4],
+                second: endDateParts[5],
+                millisecond: 999
+              }),
+              rangeType: aiDateRange.range_type
+            };
             // Call the new function to get the summary
-            const summaryResult = await handleSummarizeTask(aiDateRange, event.source.userId);
+            const summaryResult = await handleSummarizeTask(db, aiDateRange, event.source.userId);
 
             if (summaryResult.success) {
               const replyMessage = { type: "text", text: summaryResult.message };
