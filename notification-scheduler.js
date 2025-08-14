@@ -318,7 +318,6 @@
 //   const errorTime = getTimestamp();
 //   console.error(`[${errorTime}] ❌ Unhandled Rejection at:`, promise, 'reason:', reason);
 // });
-
 const cron = require('node-cron');
 const admin = require('firebase-admin');
 const moment = require('moment-timezone');
@@ -343,7 +342,8 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 const LINE_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-const CRON_SCHEDULE_DAILY = process.env.CRON_SCHEDULE_DAILY || '0 10 * * *'; // Default to 10:00 AM
+const CRON_SCHEDULE_DAILY = process.env.CRON_SCHEDULE_DAILY || '0 10 * * *';
+const CRON_SCHEDULE_WARNING = process.env.CRON_SCHEDULE_WARNING || '0 18 * * *'; // New environment variable
 
 function getCurrentThaiTime() {
   return moment.tz('Asia/Bangkok');
@@ -617,7 +617,7 @@ function createDailySummaryTextMessage(tasks) {
   const today = moment().tz('Asia/Bangkok').format('DD/MM/YYYY');
   let message = `☀️ สรุปงานสำหรับวันนี้ (${today})\n\n`;
   tasks.forEach((task, index) => {
-    const timeDisplay = moment(task.notificationTime).tz('Asia/Bangkok').format('HH:mm');
+    const timeDisplay = moment(task.notificationTime).tz('Asia/Bangkok').format('HH:mm น.');
     message += `${index + 1}. ${task.title} เวลา ${timeDisplay}\n`;
   });
   message += `\nมีทั้งหมด ${tasks.length} งาน`;
@@ -740,6 +740,82 @@ async function handleUsersWithNoTasks(usersWithTasks = new Set()) {
 }
 
 // ------------------------------------------------
+// Functions for the daily warning cron job (NEW)
+// ------------------------------------------------
+
+/**
+ * Creates a text message for a daily warning about uncompleted tasks.
+ * @param {Array<object>} tasks - An array of uncompleted task objects.
+ * @returns {string} A formatted message with a slightly more urgent tone.
+ */
+function createDailyWarningTextMessage(tasks) {
+  const today = moment().tz('Asia/Bangkok').format('DD/MM/YYYY');
+  let message = `⚠️  Today's Uncompleted Tasks (${today}) ⚠️\n\n`;
+  if (tasks.length > 0) {
+    message += `It seems you haven't completed ${tasks.length} tasks today:\n`;
+    tasks.forEach((task, index) => {
+      const timeDisplay = moment(task.notificationTime).tz('Asia/Bangkok').format('HH:mm น.');
+      message += `• ${task.title} (due at ${timeDisplay})\n`;
+    });
+  } else {
+    message += 'You have no incomplete tasks for today. Great job! 👍';
+  }
+  return message;
+}
+
+async function dailyWarning() {
+  const now = moment.tz('Asia/Bangkok');
+  const startOfDay = now.clone().startOf('day');
+  const endOfDay = now.clone().endOf('day');
+  console.log(`\n[${getTimestamp()}] 🔔  Daily Warning CRON JOB TRIGGERED - Checking for incomplete tasks...`);
+
+  try {
+    const notificationsRef = db.collectionGroup('notifications');
+    // The query finds uncompleted tasks for the current day
+    const notificationsQuery = notificationsRef
+      .where('status', '!=', 'Completed')
+      .where('notificationTime', '>=', admin.firestore.Timestamp.fromDate(startOfDay.toDate()))
+      .where('notificationTime', '<=', admin.firestore.Timestamp.fromDate(endOfDay.toDate()));
+
+    const notificationsSnapshot = await notificationsQuery.get();
+
+    if (notificationsSnapshot.empty) {
+      console.log(`[${getTimestamp()}] 📋  No incomplete tasks found for today.`);
+      return;
+    }
+
+    const userIncompleteTasks = {};
+    for (const notificationDoc of notificationsSnapshot.docs) {
+      const parentTaskDoc = await notificationDoc.ref.parent.parent.get();
+      if (parentTaskDoc.exists) {
+        const parentTaskData = parentTaskDoc.data();
+        const userId = parentTaskData.userId;
+        if (!userIncompleteTasks[userId]) {
+          userIncompleteTasks[userId] = [];
+        }
+        userIncompleteTasks[userId].push({
+          title: parentTaskData.title,
+          notificationTime: notificationDoc.data().notificationTime.toDate(),
+        });
+      }
+    }
+
+    // Sort tasks and create/send the warning message
+    const messagePromises = Object.keys(userIncompleteTasks).map(async (userId) => {
+      const tasks = userIncompleteTasks[userId].sort((a, b) => a.notificationTime - b.notificationTime);
+      const warningMessage = createDailyWarningTextMessage(tasks);
+      await sendLineTextMessage(userId, warningMessage);
+    });
+
+    await Promise.all(messagePromises);
+    console.log(`[${getTimestamp()}] ✅ Sent daily warnings to ${Object.keys(userIncompleteTasks).length} user(s).`);
+
+  } catch (error) {
+    console.error(`[${getTimestamp()}] ❌ Error in dailyWarning:`, error);
+  }
+}
+
+// ------------------------------------------------
 // Cron Job Scheduling
 // ------------------------------------------------
 
@@ -761,10 +837,22 @@ cron.schedule(CRON_SCHEDULE_DAILY, () => {
   timezone: "Asia/Bangkok"
 });
 
+// New cron job for daily warning, using the new environment variable
+cron.schedule(CRON_SCHEDULE_WARNING, () => {
+  const cronTime = getTimestamp();
+  console.log(`\n[${cronTime}] 🔔 CRON (Daily Warning) - Running check...`);
+  dailyWarning();
+}, {
+  timezone: "Asia/Bangkok"
+});
+
+
 // Initial runs on startup
 console.log(`[${getTimestamp()}] 🚀 Performing initial checks on startup...`);
 checkNotifications();
 sendDailySummaryNotifications();
+dailyWarning();
+
 
 const readyTime = getTimestamp();
 console.log(`[${readyTime}] ✅ Notification scheduler is running!`);
