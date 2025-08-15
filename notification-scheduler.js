@@ -624,6 +624,18 @@ function createDailySummaryTextMessage(tasks) {
   return message;
 }
 
+
+function createDailyWarningTextMessage(tasks) {
+  const today = moment().tz('Asia/Bangkok').format('DD/MM/YYYY');
+  let message = `สรุปงานที่ยังไม่เสร็จวันนี้ (${today})\n\n`;
+  tasks.forEach((task, index) => {
+    const timeDisplay = moment(task.notificationTime).tz('Asia/Bangkok').format('HH:mm');
+    message += `${index + 1}. ${task.title} เวลา ${timeDisplay}\n`;
+  });
+  message += `\nมีทั้งหมด ${tasks.length} งาน`;
+  return message;
+}
+
 /**
  * Creates a simple text message for when a user has no tasks.
  * @returns {string} A friendly message.
@@ -739,6 +751,96 @@ async function handleUsersWithNoTasks(usersWithTasks = new Set()) {
   console.log(`[${getTimestamp()}] ✅ Finished checking for users with no tasks.`);
 }
 
+
+
+
+async function handleUsersWithNoWarning(usersWithTasks = new Set()) {
+  console.log(`[${getTimestamp()}] 🔄 Checking for users with no incomplete today...`);
+  const usersRef = db.collection('users');
+  const usersSnapshot = await usersRef.get();
+  const noTaskMessage = createNoTaskTextMessage();
+  for (const userDoc of usersSnapshot.docs) {
+    const userId = userDoc.id;
+    if (!usersWithTasks.has(userId)) {
+      const userHasAnyNotificationsQuery = db.collection('tasks').where('userId', '==', userId).limit(1);
+      const userHasAnyNotificationsSnapshot = await userHasAnyNotificationsQuery.get();
+      if (!userHasAnyNotificationsSnapshot.empty) {
+        console.log(`[${getTimestamp()}] 💌 Sending 'no incomplete tasks today' message to user: ${userId}`);
+        await sendLineTextMessage(userId, noTaskMessage);
+      }
+    }
+  }
+  console.log(`[${getTimestamp()}] ✅ Finished checking for users with no warnings.`);
+}
+
+
+
+
+
+
+
+
+
+async function sendDailyWarningNotifications() {
+  const now = moment.tz('Asia/Bangkok');
+  const startOfDay = now.clone().startOf('day');
+  const endOfDay = now.clone().endOf('day');
+  console.log(`\n[${getTimestamp()}] ☀️ Daily Warning CRON JOB TRIGGERED - Running...`);
+
+  try {
+    const notificationsRef = db.collectionGroup('notifications');
+    const notificationsQuery = notificationsRef
+      .where('status', '!=', 'Completed')
+      .where('notificationTime', '>=', admin.firestore.Timestamp.fromDate(startOfDay.toDate()))
+      .where('notificationTime', '<=', admin.firestore.Timestamp.fromDate(endOfDay.toDate()));
+
+    const notificationsSnapshot = await notificationsQuery.get();
+
+    if (notificationsSnapshot.empty) {
+      console.log(`[${getTimestamp()}] 📋 No Incomplete Job found for today.`);
+      await handleUsersWithNoWarning(new Set());
+      console.log(`[${getTimestamp()}] ✅ Daily Warning check finished.`);
+      return;
+    }
+
+    const userTasks = {};
+    const processedUserIds = new Set();
+    for (const notificationDoc of notificationsSnapshot.docs) {
+      const notificationData = notificationDoc.data();
+      const parentTaskRef = notificationDoc.ref.parent.parent;
+      const parentTaskDoc = await parentTaskRef.get();
+      if (parentTaskDoc.exists) {
+        const parentTaskData = parentTaskDoc.data();
+        const userId = parentTaskData.userId;
+        if (!userTasks[userId]) {
+          userTasks[userId] = [];
+        }
+        userTasks[userId].push({
+          title: parentTaskData.title,
+          notificationTime: notificationData.notificationTime.toDate(),
+        });
+        processedUserIds.add(userId);
+      }
+    }
+    const messagePromises = Object.keys(userTasks).map(async (userId) => {
+      const tasks = userTasks[userId].sort((a, b) => a.notificationTime - b.notificationTime);
+      const summaryMessage = createDailyWarningTextMessage(tasks);
+      await sendLineTextMessage(userId, summaryMessage);
+    });
+    await Promise.all(messagePromises);
+    console.log(`[${getTimestamp()}] ✅ Sent daily warnings to ${Object.keys(userTasks).length} user(s).`);
+    await handleUsersWithNoWarning(processedUserIds);
+    console.log(`[${getTimestamp()}] ✅ Daily warning notification process completed.`);
+  } catch (error) {
+    console.error(`[${getTimestamp()}] ❌ Error in sendDailySummaryNotifications:`, error);
+  }
+}
+
+
+
+
+
+
 // ------------------------------------------------
 // Cron Job Scheduling
 // ------------------------------------------------
@@ -757,6 +859,14 @@ cron.schedule(CRON_SCHEDULE_DAILY, () => {
   const cronTime = getTimestamp();
   console.log(`\n[${cronTime}] ☀️ CRON (Daily Summary) - Running check...`);
   sendDailySummaryNotifications();
+}, {
+  timezone: "Asia/Bangkok"
+});
+
+cron.schedule(CRON_SCHEDULE_WARNING, () => {
+  const cronTime = getTimestamp();
+  console.log(`\n[${cronTime}] ☀️ CRON (Daily Warning) - Running check...`);
+  sendDailyWarningNotifications();
 }, {
   timezone: "Asia/Bangkok"
 });
