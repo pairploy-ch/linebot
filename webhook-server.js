@@ -8,6 +8,8 @@ const { Timestamp } = require('firebase-admin/firestore');
 const app = express();
 const port = process.env.PORT || 3001;
 
+
+
 // Load environment variables for AI and LINE
 require('dotenv').config();
 
@@ -119,6 +121,13 @@ async function classifyMessageWithAI(prompt) {
   return category;
 }
 
+// === NEW FUNCTIONS FROM SUMMARY.JS ===
+
+/**
+ * Uses an AI to parse a natural language prompt for date ranges.
+ * @param {string} prompt - The natural language prompt from the user.
+ * @returns {Promise<object>} The parsed date range in a structured JSON format.
+ */
 async function summarizeDateRangeWithAI(prompt) {
   const now = moment().tz("Asia/Bangkok");
   const currentDate = now.format("dddd DD/MM/YYYY HH.mm");
@@ -129,7 +138,7 @@ async function summarizeDateRangeWithAI(prompt) {
 สกีมา:
 {
   "start_date": "YYYY, M, D, 00, 00, 00, 00000",
-  "end_date":   "YYYY, M, D, 23, 59, 59, 99999",
+  "end_date":   "YYYY, M, D, 23, 59, 59, 99999",
   "range_type": <1 | 2>
 }
 
@@ -160,104 +169,26 @@ async function summarizeDateRangeWithAI(prompt) {
 
   const range_analysis = response.choices[0].message.content.trim();
   console.log(`[${getTimestamp()}] 🤖 AI Date Range Analysis: ${range_analysis}`);
-  return range_analysis;
+  return JSON.parse(range_analysis);
 }
 
-function convertAiRangeToThaiMicros(aiRange) {
-  const parseCSV = (csv) => {
-    // csv like: "2025, 8, 14, 00, 00, 00, 00000"
-    const [Y, M, D, h, m, s] = String(csv).split(',').map(v => parseInt(v.trim(), 10));
-    return moment.tz(
-      { year: Y, month: M - 1, day: D, hour: h, minute: m, second: s, millisecond: 0 },
-      "Asia/Bangkok"
-    );
-  };
-
-  const toThaiMicrosString = (m, micros) => {
-    const datePart = m.format("YYYY-MM-DD HH:mm:ss");
-    const offset = m.format("Z"); // +07:00
-    const microStr = String(micros).padStart(6, "0"); // 6 digits
-    return `${datePart}.${microStr}${offset}`;
-  };
-
-  const startM = moment.isMoment(aiRange.start_date) ? aiRange.start_date : parseCSV(aiRange.start_date);
-  const endM = moment.isMoment(aiRange.end_date) ? aiRange.end_date : parseCSV(aiRange.end_date);
-
-  return {
-    // for Python Firestore filter comparisons:
-    start_date: toThaiMicrosString(startM, 0),        // ...000000+07:00
-    end_date: toThaiMicrosString(endM, 999999),     // ...999999+07:00
-    range_type: aiRange.range_type
-  };
+/**
+ * Helper function to format the date in Thai.
+ * @param {Date} date - The date to format.
+ * @returns {string} The formatted date string.
+ */
+function formatDateInThai(date) {
+  const monthNames = [
+    'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+    'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+  ];
+  const day = date.getDate();
+  const monthIndex = date.getMonth();
+  return `${day} ${monthNames[monthIndex]}`;
 }
 
-async function handleSummarizeTask(db, taskData, lineUserId) {
-  console.log(`[${getTimestamp()}] 📝 Starting task summary for user: ${lineUserId}`);
 
-  let startDate, endDate, rangeType;
-
-  try {
-    const sd = taskData.start_date
-    const ed = taskData.end_date
-
-
-    rangeType = taskData.range_type
-
-    // ---------------- existing code continues from here ----------------
-    const userDocRef = db.collection('users').doc(lineUserId);
-    const tasksRef = db.collection('users').collection('tasks');
-    const foundTasks = await tasksRef.stream();
-
-    const allNotifications = [];
-    for await (const taskDoc of foundTasks) {
-      const notificationsRef = taskDoc.reference.collection('notifications');
-      const notificationsQuery = notificationsRef
-        .where('notificationTime', '>=', admin.firestore.Timestamp.fromDate(sd))
-        .where('notificationTime', '<=', admin.firestore.Timestamp.fromDate(ed))
-        .where('status', '!=', 'Completed');
-
-      const notificationsSnapshot = await notificationsQuery.get();
-      for (const notiDoc of notificationsSnapshot.docs) {
-        const parentTaskRef = notiDoc.ref.parent.parent;
-        const parentTaskDoc = await parentTaskRef.get();
-        const parentTaskData = parentTaskDoc.data();
-        const notificationData = notiDoc.data();
-
-        allNotifications.push({
-          title: parentTaskData.title,
-          notificationTime: notificationData.notificationTime.toDate()
-        });
-      }
-    }
-
-    allNotifications.sort((a, b) => a.notificationTime - b.notificationTime);
-
-    let message = '';
-    if (allNotifications.length === 0) {
-      message = "🎉 ในช่วงเวลาที่คุณระบุ ไม่มีงานที่ต้องทำค่ะ";
-    } else {
-      const startMonth = moment(startDate).locale('th').format('MMMM');
-      const endMonth = moment(endDate).locale('th').format('MMMM');
-
-      if (rangeType === 1) {
-        message = `วันที่ ${moment(startDate).locale('th').format('DD MMMM')} คุณมีทั้งหมด ${allNotifications.length} งาน\n\n`;
-      } else {
-        message = `ในระหว่างวันที่ ${moment(startDate).locale('th').format('DD')} ${startMonth} ถึง วันที่ ${moment(endDate).locale('th').format('DD')} ${endMonth} คุณมีทั้งหมด ${allNotifications.length} งาน\n\n`;
-      }
-
-      allNotifications.forEach((task, i) => {
-        const formattedDate = moment(task.notificationTime).locale('th').format('DD MMMM');
-        message += `${i + 1}. ${task.title} : ${formattedDate}\n`;
-      });
-    }
-
-    return { success: true, message };
-  } catch (error) {
-    console.error(`[${getTimestamp()}] ❌ Failed to summarize tasks:`, error);
-    return { success: false, message: "❌ เกิดข้อผิดพลาดในการสรุปงาน กรุณาลองใหม่" };
-  }
-}
-
+// === END OF NEW FUNCTIONS ===
 
 async function createTaskWithAI(prompt) {
   const now = moment().tz("Asia/Bangkok");
@@ -538,61 +469,78 @@ app.post("/webhook", (req, res) => {
             await sendReplyMessage(event.replyToken, [replyMessage]);
           }
         }
-
         else if (intent === 'summarize_task') {
-          const aiOutputJson = await summarizeDateRangeWithAI(aiPrompt);
-          try {
-            const cleanJsonString = aiOutputJson.replace(/```json|```/g, '').trim();
-            const aiDateRange = JSON.parse(cleanJsonString);
+          // --- NEW SUMMARY LOGIC ---
+          const aiResult = await summarizeDateRangeWithAI(aiPrompt);
 
-            if (aiDateRange.error) {
-              // ...
-            }
-
-            const aiOutputCorrectFormat = convertAiRangeToThaiMicros(aiOutputJson)
-
-
-            // --- ADDED FIX FOR MOMENT WARNING ---
-            // const startDateParts = aiDateRange.start_date.split(',').map(s => parseInt(s.trim()));
-            // const endDateParts = aiDateRange.end_date.split(',').map(s => parseInt(s.trim()));
-
-            // const formattedTaskData = {
-            //   startDate: moment().tz("Asia/Bangkok").set({
-            //     year: startDateParts[0],
-            //     month: startDateParts[1] - 1, // moment months are 0-indexed
-            //     date: startDateParts[2],
-            //     hour: startDateParts[3],
-            //     minute: startDateParts[4],
-            //     second: startDateParts[5],
-            //     millisecond: 0
-            //   }),
-            //   endDate: moment().tz("Asia/Bangkok").set({
-            //     year: endDateParts[0],
-            //     month: endDateParts[1] - 1, // moment months are 0-indexed
-            //     date: endDateParts[2],
-            //     hour: endDateParts[3],
-            //     minute: endDateParts[4],
-            //     second: endDateParts[5],
-            //     millisecond: 999
-            //   }),
-            //   rangeType: aiDateRange.range_type
-            // };
-            // Call the new function to get the summary
-            const summaryResult = await handleSummarizeTask(db, aiOutputCorrectFormat, event.source.userId);
-
-            if (summaryResult.success) {
-              const replyMessage = { type: "text", text: summaryResult.message };
-              await sendReplyMessage(event.replyToken, [replyMessage]);
-            } else {
-              const replyMessage = { type: "text", text: summaryResult.message };
-              await sendReplyMessage(event.replyToken, [replyMessage]);
-            }
-
-          } catch (error) {
-            console.error(`[${getTimestamp()}] ❌ Error parsing AI response or summarizing tasks:`, error);
-            const replyMessage = { type: "text", text: "❌ เกิดข้อผิดพลาดในการสรุปงาน กรุณาลองใหม่" };
+          if (aiResult.error) {
+            console.log(`❌ AI could not parse the date range. Error: ${aiResult.error}`);
+            const replyMessage = { type: "text", text: `ขออภัยค่ะ ฉันไม่เข้าใจช่วงวันที่ที่คุณต้องการให้สรุป` };
             await sendReplyMessage(event.replyToken, [replyMessage]);
+            return;
           }
+
+          const [startYear, startMonth, startDay, startHour, startMinute, startSecond, startMilli] = aiResult.start_date.split(',').map(arg => parseInt(arg.trim()));
+          const [endYear, endMonth, endDay, endHour, endMinute, endSecond, endMilli] = aiResult.end_date.split(',').map(arg => parseInt(arg.trim()));
+          
+          const startDate = new Date(startYear, startMonth - 1, startDay, startHour, startMinute, startSecond, startMilli);
+          const endDate = new Date(endYear, endMonth - 1, endDay, endHour, endMinute, endSecond, endMilli);
+
+          const targetUserId = event.source.userId;
+
+          let allNotifications = [];
+          const tasksRef = db.collection('users').doc(targetUserId).collection('tasks');
+          const tasksSnapshot = await tasksRef.get();
+
+          if (tasksSnapshot.empty) {
+            const replyMessage = { type: "text", text: `ไม่พบงานในระบบของคุณค่ะ` };
+            await sendReplyMessage(event.replyToken, [replyMessage]);
+            return;
+          }
+
+          const notificationQueries = tasksSnapshot.docs.map(async (taskDoc) => {
+            const notificationsRef = taskDoc.ref.collection('notifications');
+            const notificationsQuery = notificationsRef
+              .where('notificationTime', '>=', startDate)
+              .where('notificationTime', '<=', endDate)
+              .where('status', '!=', 'Completed');
+            const notificationsSnapshot = await notificationsQuery.get();
+            
+            notificationsSnapshot.forEach(async (notiDoc) => {
+              const parentTaskData = taskDoc.data();
+              allNotifications.push({
+                ...notiDoc.data(),
+                parentTaskTitle: parentTaskData.title || 'N/A',
+                id: notiDoc.id
+              });
+            });
+          });
+
+          await Promise.all(notificationQueries);
+          allNotifications.sort((a, b) => a.notificationTime.toDate() - b.notificationTime.toDate());
+
+          let message;
+          if (allNotifications.length > 0) {
+            if (aiResult.range_type === 1) {
+              const singleDateName = formatDateInThai(startDate);
+              message = `ในวันที่ ${singleDateName} คุณมีทั้งหมด ${allNotifications.length} งาน\n\n`;
+            } else {
+              const startMonthName = formatDateInThai(startDate).split(' ')[1];
+              const endMonthName = formatDateInThai(endDate).split(' ')[1];
+              message = `ในระหว่างวันที่ ${startDate.getDate()} ${startMonthName} ถึง วันที่ ${endDate.getDate()} ${endMonthName} คุณมีทั้งหมด ${allNotifications.length} งาน\n\n`;
+            }
+
+            allNotifications.forEach((noti, i) => {
+              const notificationDate = formatDateInThai(noti.notificationTime.toDate());
+              message += `${i + 1}. ${noti.parentTaskTitle} : ${notificationDate}\n`;
+            });
+          } else {
+            message = `ไม่พบงานในช่วงเวลาที่คุณระบุค่ะ`;
+          }
+
+          const replyMessage = { type: "text", text: message };
+          await sendReplyMessage(event.replyToken, [replyMessage]);
+          // --- END OF NEW SUMMARY LOGIC ---
         }
 
         else if (intent === 'general_search') {
