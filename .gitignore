@@ -43,3 +43,8 @@ next-env.d.ts
 firebase-key.json
 firebase-key.json
 firebase-key.json
+
+serviceAccountKey.json
+noti.py
+summary.py
+summary.js
