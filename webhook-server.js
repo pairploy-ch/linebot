@@ -92,15 +92,14 @@ async function classifyMessageWithAI(prompt) {
     
     Categories:
     - create_task: User wants to create a new task or reminder (if it is work, it is; may be no obvious words indicated the desire to create task).
-    - summarize_task: User wants to summarize or list tasks within a specific date range.
-    - read_task: User wants to view, list, or check their existing tasks.
+    - summarize_task: User wants to know, summarize or list tasks within a specific date range.
     - edit_task: User wants to modify or update a task.
     - delete_task: User wants to delete or cancel a task.
     - complete_task: User wants to mark a task as completed.
     - health_query: User is asking a medical or health-related question.
     - weather_check: User wants to know the weather for a location.
     - general_search: User is asking a general knowledge question or for a summary.
-    - create_content: User wants to draft an email, social media post, or other text.
+    - create_content: User wants to draft an email, social media post, script, or other text.
     - unknown: The intent does not match any of the above categories.
 
     User message: "${prompt}"
@@ -232,6 +231,26 @@ async function createTaskWithAI(prompt) {
 
   const text_file_analysis = response.choices[0].message.content.trim();
   console.log(`[${getTimestamp()}] 🤖 AI Create Task Analysis: ${text_file_analysis}`);
+  return text_file_analysis;
+}
+
+async function contentWithAI(prompt) {
+  const createContentPrompt = `
+      ช่วย user เขียนข้อความสั้นๆ ที่เกี่ยวกับการสร้างเนื้อหา เช่น อีเมล โพสต์โซเชียลมีเดีย หรือสคริปต์ หรืออื่นๆตามที่ต้องการ
+
+    User message: "${prompt}"
+  `;
+
+
+  const response = await openaiClient.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: createContentPrompt }],
+    max_tokens: 600,
+    temperature: 0,
+  });
+
+  const text_file_analysis = response.choices[0].message.content.trim();
+  console.log(`[${getTimestamp()}] 🤖 AI Content Generation: ${text_file_analysis}`);
   return text_file_analysis;
 }
 
@@ -482,7 +501,7 @@ app.post("/webhook", (req, res) => {
 
           const [startYear, startMonth, startDay, startHour, startMinute, startSecond, startMilli] = aiResult.start_date.split(',').map(arg => parseInt(arg.trim()));
           const [endYear, endMonth, endDay, endHour, endMinute, endSecond, endMilli] = aiResult.end_date.split(',').map(arg => parseInt(arg.trim()));
-          
+
           const startDate = new Date(startYear, startMonth - 1, startDay, startHour, startMinute, startSecond, startMilli);
           const endDate = new Date(endYear, endMonth - 1, endDay, endHour, endMinute, endSecond, endMilli);
 
@@ -505,7 +524,7 @@ app.post("/webhook", (req, res) => {
               .where('notificationTime', '<=', endDate)
               .where('status', '!=', 'Completed');
             const notificationsSnapshot = await notificationsQuery.get();
-            
+
             notificationsSnapshot.forEach(async (notiDoc) => {
               const parentTaskData = taskDoc.data();
               allNotifications.push({
@@ -555,6 +574,12 @@ app.post("/webhook", (req, res) => {
           await sendReplyMessage(event.replyToken, [replyMessage]);
         }
 
+        else if (intent === 'create_content') {
+          const aiOutputContent = await contentWithAI(aiPrompt);
+          const replyMessage = { type: "text", text: `${aiOutputContent}` };
+          await sendReplyMessage(event.replyToken, [replyMessage]);
+        }
+
 
         else {
           // const replyMessage = { type: "text", text: `ประเภทข้อความที่ตรวจพบ: ${intent}` };
@@ -578,7 +603,6 @@ app.post("/webhook", (req, res) => {
       } else {
 
         console.log(`[${getTimestamp()}] ℹ️ Unhandled event type: ${event.type}`);
-
         if (event.message) {
 
           console.log(`[${getTimestamp()}] 📄 Message type: ${event.message.type}`);
