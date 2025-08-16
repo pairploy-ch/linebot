@@ -112,7 +112,12 @@ export default function TaskManager() {
   };
 
   const handleAddTask = async () => {
-    if (!session?.lineUserId || !newTask.title.trim() || !newTask.date || !newTask.time) {
+    if (
+      !session?.lineUserId ||
+      !newTask.title.trim() ||
+      !newTask.date ||
+      !newTask.time
+    ) {
       toast.error("Please fill in all required fields.");
       return;
     }
@@ -125,11 +130,15 @@ export default function TaskManager() {
     try {
       // Step 1: Ensure a user document exists for the current user
       const userDocRef = doc(db, "users", session.lineUserId);
-      await setDoc(userDocRef, {
-        name: session.user.name,
-        lineUserId: session.lineUserId,
-        createdAt: Timestamp.now(),
-      }, { merge: true });
+      await setDoc(
+        userDocRef,
+        {
+          name: session.user.name,
+          lineUserId: session.lineUserId,
+          createdAt: Timestamp.now(),
+        },
+        { merge: true }
+      );
 
       // Step 2: Create the master task document within the user's subcollection
       const masterTask = {
@@ -175,6 +184,9 @@ export default function TaskManager() {
         status: "Upcoming",
         endDate: "",
       });
+      
+      // Refresh tasks list
+      await fetchTasks();
       toast.success("Task and notifications added successfully!");
     } catch (error) {
       console.error("Failed to add task:", error);
@@ -200,13 +212,13 @@ export default function TaskManager() {
             </p>
             <div className="flex flex-col space-y-3">
               <button
-                onClick={() => confirmDeleteTask('single')}
+                onClick={() => confirmDeleteTask("single")}
                 className="flex-1 bg-red-500 text-white py-3 rounded-xl font-medium hover:bg-red-600 transition-colors"
               >
                 ลบแค่การแจ้งเตือนนี้
               </button>
               <button
-                onClick={() => confirmDeleteTask('all')}
+                onClick={() => confirmDeleteTask("all")}
                 className="flex-1 bg-red-700 text-white py-3 rounded-xl font-medium hover:bg-red-800 transition-colors"
               >
                 ลบงานทั้งหมด
@@ -231,11 +243,25 @@ export default function TaskManager() {
   const handleDeleteTask = async (task) => {
     setTaskToDelete(task);
     setShowDeleteModal(true);
+    setCurrentView("home");
   };
 
   const deleteSingleNotification = async () => {
     try {
-      await deleteDoc(doc(db, "users", session.lineUserId, "tasks", taskToDelete.parentId, "notifications", taskToDelete.id));
+      await deleteDoc(
+        doc(
+          db,
+          "users",
+          session.lineUserId,
+          "tasks",
+          taskToDelete.parentId,
+          "notifications",
+          taskToDelete.id
+        )
+      );
+      
+      // Refresh tasks list
+      await fetchTasks();
       toast.success("ลบการแจ้งเตือนนี้สำเร็จ!");
     } catch (error) {
       console.error("ลบการแจ้งเตือนล้มเหลว:", error);
@@ -246,17 +272,27 @@ export default function TaskManager() {
   const deleteAllOccurrences = async () => {
     if (!taskToDelete) return;
     try {
-      const parentTaskRef = doc(db, "users", session.lineUserId, "tasks", taskToDelete.parentId);
-      const subcollectionSnapshot = await getDocs(collection(parentTaskRef, "notifications"));
+      const parentTaskRef = doc(
+        db,
+        "users",
+        session.lineUserId,
+        "tasks",
+        taskToDelete.parentId
+      );
+      const subcollectionSnapshot = await getDocs(
+        collection(parentTaskRef, "notifications")
+      );
 
       const batch = writeBatch(db);
-      subcollectionSnapshot.docs.forEach(subDoc => {
+      subcollectionSnapshot.docs.forEach((subDoc) => {
         batch.delete(subDoc.ref);
       });
 
       batch.delete(parentTaskRef);
       await batch.commit();
 
+      // Refresh tasks list
+      await fetchTasks();
       toast.success("ลบงานทั้งหมดสำเร็จแล้ว!");
     } catch (error) {
       console.error("ลบงานทั้งหมดล้มเหลว:", error);
@@ -266,9 +302,9 @@ export default function TaskManager() {
 
   const confirmDeleteTask = async (type) => {
     if (!taskToDelete) return;
-    if (type === 'single') {
+    if (type === "single") {
       await deleteSingleNotification();
-    } else if (type === 'all') {
+    } else if (type === "all") {
       await deleteAllOccurrences();
     }
     setShowDeleteModal(false);
@@ -278,11 +314,23 @@ export default function TaskManager() {
 
   const handleCompleteTask = async (task) => {
     try {
-      const notificationRef = doc(db, "users", session.lineUserId, "tasks", task.parentId, "notifications", task.id);
+      const notificationRef = doc(
+        db,
+        "users",
+        session.lineUserId,
+        "tasks",
+        task.parentId,
+        "notifications",
+        task.id
+      );
       await updateDoc(notificationRef, {
         status: "Completed",
       });
+
+      // Refresh tasks list
+      await fetchTasks();
       toast.success("Task completed successfully!");
+      setCurrentView("home");
     } catch (error) {
       console.error("Failed to complete task:", error);
       toast.error("Failed to complete task.");
@@ -314,8 +362,22 @@ export default function TaskManager() {
     }
 
     try {
-      const parentTaskRef = doc(db, "users", session.lineUserId, "tasks", editingTask.parentId);
-      const notificationRef = doc(db, "users", session.lineUserId, "tasks", editingTask.parentId, "notifications", editingTask.id);
+      const parentTaskRef = doc(
+        db,
+        "users",
+        session.lineUserId,
+        "tasks",
+        editingTask.parentId
+      );
+      const notificationRef = doc(
+        db,
+        "users",
+        session.lineUserId,
+        "tasks",
+        editingTask.parentId,
+        "notifications",
+        editingTask.id
+      );
 
       await updateDoc(parentTaskRef, {
         title: editingTask.title,
@@ -324,12 +386,17 @@ export default function TaskManager() {
       });
 
       await updateDoc(notificationRef, {
-        notificationTime: Timestamp.fromDate(new Date(`${editingTask.date}T${editingTask.time}`)),
+        notificationTime: Timestamp.fromDate(
+          new Date(`${editingTask.date}T${editingTask.time}`)
+        ),
         status: editingTask.status,
       });
 
       setCurrentView("home");
       setEditingTask(null);
+      
+      // Refresh tasks list
+      await fetchTasks();
       toast.success("อัพเดท task สำเร็จแล้ว!");
     } catch (error) {
       console.error("อัพเดท task ล้มเหลว:", error);
@@ -337,25 +404,40 @@ export default function TaskManager() {
     }
   };
 
-  const formatDate = (dateValue, options = {}) => {
-    if (!dateValue) return "No date";
-    let date;
-    if (dateValue instanceof Timestamp) {
-      date = dateValue.toDate();
-    } else {
-      date = new Date(dateValue);
-    }
-    try {
-      if (isNaN(date.getTime())) return "Invalid Date";
-      return date.toLocaleString("th-TH", {
-        dateStyle: "medium",
-        timeStyle: "short",
-        ...options,
-      });
-    } catch (error) {
-      return "Invalid Date";
-    }
-  };
+const formatDate = (dateValue, options = {}) => {
+  if (!dateValue) return "No date";
+  let date;
+  if (dateValue instanceof Timestamp) {
+    date = dateValue.toDate();
+  } else {
+    date = new Date(dateValue);
+  }
+  try {
+    if (isNaN(date.getTime())) return "Invalid Date";
+    
+    // กำหนดชื่อเดือนเป็นภาษาไทย
+    const monthNames = [
+      'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+      'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
+    ];
+    
+    // กำหนดชื่อวันเป็นภาษาไทย
+    const dayNames = [
+      'อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'
+    ];
+    
+    const dayName = dayNames[date.getDay()];
+    const day = date.getDate();
+    const month = monthNames[date.getMonth()];
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    
+    return `วัน${dayName}ที่ ${day} ${month} ${hours}:${minutes}`;
+    
+  } catch (error) {
+    return "Invalid Date";
+  }
+};
 
   const formatDateTime = (date, time) => {
     if (!date || !time) return "";
@@ -384,7 +466,12 @@ export default function TaskManager() {
       }
 
       const tasksData = [];
-      const userTasksCollectionRef = collection(db, "users", session.lineUserId, "tasks");
+      const userTasksCollectionRef = collection(
+        db,
+        "users",
+        session.lineUserId,
+        "tasks"
+      );
       const parentQuery = query(
         userTasksCollectionRef,
         orderBy("createdAt", "desc")
@@ -397,7 +484,7 @@ export default function TaskManager() {
         const notificationsQuery = collection(parentDoc.ref, "notifications");
         const notificationsSnapshot = await getDocs(notificationsQuery);
 
-        notificationsSnapshot.forEach(notificationDoc => {
+        notificationsSnapshot.forEach((notificationDoc) => {
           const notificationData = notificationDoc.data();
           tasksData.push({
             id: notificationDoc.id,
@@ -424,9 +511,14 @@ export default function TaskManager() {
   // UPDATED: Sets up a real-time listener on the user's specific tasks subcollection
   const setupTasksListener = () => {
     if (!session?.lineUserId) {
-      return () => { };
+      return () => {};
     }
-    const userTasksCollectionRef = collection(db, "users", session.lineUserId, "tasks");
+    const userTasksCollectionRef = collection(
+      db,
+      "users",
+      session.lineUserId,
+      "tasks"
+    );
     const parentQuery = query(
       userTasksCollectionRef,
       orderBy("createdAt", "desc")
@@ -437,7 +529,6 @@ export default function TaskManager() {
     });
     return unsubscribe;
   };
-
 
   useEffect(() => {
     if (session?.lineUserId) {
@@ -513,7 +604,6 @@ export default function TaskManager() {
     return filteredTasks;
   };
 
-
   const getStatusColor = (status) => {
     switch (status) {
       case "Upcoming":
@@ -530,13 +620,13 @@ export default function TaskManager() {
   const getTaskBorderColor = (color) => {
     switch (color) {
       case "blue":
-        return "border-l-blue-500 bg-white";
+        return "bg-white";
       case "green":
-        return "border-l-green-500 bg-white";
+        return "bg-white";
       case "red":
-        return "border-l-red-500 bg-white";
+        return "bg-white";
       default:
-        return "border-l-gray-500 bg-white";
+        return "bg-white";
     }
   };
 
@@ -552,13 +642,15 @@ export default function TaskManager() {
     const targetYear = date.getFullYear();
     const targetMonth = date.getMonth();
     const targetDay = date.getDate();
-    return tasks.filter(task => {
+    return tasks.filter((task) => {
       if (!task.notificationTime) return false;
       try {
         const taskDate = task.notificationTime.toDate();
-        return taskDate.getFullYear() === targetYear &&
+        return (
+          taskDate.getFullYear() === targetYear &&
           taskDate.getMonth() === targetMonth &&
-          taskDate.getDate() === targetDay;
+          taskDate.getDate() === targetDay
+        );
       } catch (error) {
         console.error("Error parsing task date:", error, task.notificationTime);
         return false;
@@ -567,7 +659,7 @@ export default function TaskManager() {
   };
 
   const navigateMonth = (direction) => {
-    setCurrentDate(prev => {
+    setCurrentDate((prev) => {
       const newDate = new Date(prev);
       newDate.setMonth(prev.getMonth() + direction);
       return newDate;
@@ -579,8 +671,18 @@ export default function TaskManager() {
     const firstDay = getFirstDayOfMonth(currentDate);
     const today = new Date();
     const monthNames = [
-      "January", "February", "March", "April", "May", "June",
-      "July", "August", "September", "October", "November", "December"
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
     ];
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const days = [];
@@ -588,9 +690,14 @@ export default function TaskManager() {
       days.push(<div key={`empty-${i}`} className="h-12"></div>);
     }
     for (let day = 1; day <= daysInMonth; day++) {
-      const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+      const date = new Date(
+        currentDate.getFullYear(),
+        currentDate.getMonth(),
+        day
+      );
       const isToday = date.toDateString() === today.toDateString();
-      const isSelected = selectedDate && date.toDateString() === selectedDate.toDateString();
+      const isSelected =
+        selectedDate && date.toDateString() === selectedDate.toDateString();
       const tasksForDay = getTasksForDate(date);
       days.push(
         <button
@@ -598,10 +705,15 @@ export default function TaskManager() {
           onClick={() => setSelectedDate(date)}
           className="h-12 relative hover:bg-gray-50 rounded-lg transition-colors p-1"
         >
-          <div className={`w-10 h-10 flex items-center justify-center rounded-full text-sm font-medium transition-colors ${isToday ? 'bg-black text-white' :
-            isSelected ? 'bg-blue-500 text-white' :
-              'text-gray-900 hover:bg-gray-100'
-            }`}>
+          <div
+            className={`w-10 h-10 flex items-center justify-center rounded-full text-sm font-medium transition-colors ${
+              isToday
+                ? "bg-black text-white"
+                : isSelected
+                ? "bg-blue-500 text-white"
+                : "text-gray-900 hover:bg-gray-100"
+            }`}
+          >
             {day}
           </div>
           {tasksForDay.length > 0 && (
@@ -609,9 +721,13 @@ export default function TaskManager() {
               {tasksForDay.slice(0, 3).map((task, index) => (
                 <div
                   key={index}
-                  className={`w-2 h-2 rounded-full ${task.status === 'Completed' ? 'bg-green-400' :
-                    task.status === 'Incomplete' ? 'bg-red-400' : 'bg-blue-400'
-                    }`}
+                  className={`w-2 h-2 rounded-full ${
+                    task.status === "Completed"
+                      ? "bg-green-400"
+                      : task.status === "Incomplete"
+                      ? "bg-red-400"
+                      : "bg-blue-400"
+                  }`}
                 />
               ))}
               {tasksForDay.length > 3 && (
@@ -644,15 +760,16 @@ export default function TaskManager() {
           </div>
         </div>
         <div className="grid grid-cols-7 gap-2 mb-4">
-          {dayNames.map(day => (
-            <div key={day} className="text-center text-sm font-medium text-gray-500 py-2">
+          {dayNames.map((day) => (
+            <div
+              key={day}
+              className="text-center text-sm font-medium text-gray-500 py-2"
+            >
               {day}
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7 gap-2">
-          {days}
-        </div>
+        <div className="grid grid-cols-7 gap-2">{days}</div>
       </div>
     );
   };
@@ -660,11 +777,11 @@ export default function TaskManager() {
   const renderSelectedDateTasks = () => {
     if (!selectedDate) return null;
     const selectedTasks = getTasksForDate(selectedDate);
-    const dateStr = selectedDate.toLocaleDateString('th-TH', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
+    const dateStr = selectedDate.toLocaleDateString("th-TH", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
     });
     return (
       <div className="mx-4 mt-6">
@@ -682,11 +799,11 @@ export default function TaskManager() {
               <p className="text-gray-500 mb-4">No tasks for this day</p>
               <button
                 onClick={() => {
-                  const dateStr = selectedDate.toISOString().split('T')[0];
+                  const dateStr = selectedDate.toISOString().split("T")[0];
                   setNewTask({
                     ...newTask,
                     date: dateStr,
-                    time: "09:00"
+                    time: "09:00",
                   });
                   setCurrentView("addTask");
                 }}
@@ -712,23 +829,22 @@ export default function TaskManager() {
                   let timeStr = "";
                   try {
                     const taskDate = task.notificationTime.toDate();
-                    timeStr = taskDate.toLocaleTimeString('th-TH', {
-                      hour: '2-digit',
-                      minute: '2-digit'
+                    timeStr = taskDate.toLocaleTimeString("th-TH", {
+                      hour: "2-digit",
+                      minute: "2-digit",
                     });
                   } catch (error) {
                     timeStr = "Invalid time";
                   }
                   return (
-                    <div
-                      key={task.id}
-                      className={`border-l-4 ${getTaskBorderColor(task.color)} rounded-r-lg p-4`}
-                    >
+                    <div key={task.id}>
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
                           <div className="flex items-center space-x-2 mb-2">
                             <Clock className="w-4 h-4 text-gray-500" />
-                            <span className="text-sm text-gray-500">{timeStr}</span>
+                            <span className="text-sm text-gray-500">
+                              {timeStr}
+                            </span>
                             <span
                               className={`px-2 py-1 rounded-full text-xs font-medium text-white ${getStatusColor(
                                 task.status
@@ -745,15 +861,18 @@ export default function TaskManager() {
                               {task.detail}
                             </p>
                           )}
-                          <div className="flex items-center text-gray-500 text-xs">
+                          {/* <div className="flex items-center text-gray-500 text-xs">
                             <span>Repeat: {task.repeatType}</span>
-                          </div>
+                          </div> */}
                         </div>
                         <div className="flex space-x-2 ml-4">
                           {task.status === "Upcoming" && (
                             <>
                               <button
-                                onClick={() => handleCompleteTask(task)}
+                                onClick={async () => {
+                                  await handleCompleteTask(task);
+                                  await fetchTasks(); // Refresh list
+                                }}
                                 className="flex items-center space-x-1 text-xs px-2 py-1 bg-green-100 text-green-600 rounded-md hover:bg-green-200 transition-colors"
                               >
                                 <CheckCircle className="w-3 h-3" />
@@ -775,7 +894,8 @@ export default function TaskManager() {
                               </button>
                             </>
                           )}
-                          {(task.status === "Completed" || task.status === "Incomplete") && (
+                          {(task.status === "Completed" ||
+                            task.status === "Incomplete") && (
                             <div className="flex space-x-2">
                               <button
                                 onClick={() => handleDeleteTask(task)}
@@ -795,11 +915,11 @@ export default function TaskManager() {
               <div className="pt-4">
                 <button
                   onClick={() => {
-                    const dateStr = selectedDate.toISOString().split('T')[0];
+                    const dateStr = selectedDate.toISOString().split("T")[0];
                     setNewTask({
                       ...newTask,
                       date: dateStr,
-                      time: "09:00"
+                      time: "09:00",
                     });
                     setCurrentView("addTask");
                   }}
@@ -825,7 +945,7 @@ export default function TaskManager() {
     if (selectedDate) return null;
 
     const todayTasks = getTodayTasks();
-    const morningTasks = todayTasks.filter(task => {
+    const morningTasks = todayTasks.filter((task) => {
       try {
         let taskDate = task.notificationTime.toDate();
         return taskDate.getHours() < 12;
@@ -834,7 +954,7 @@ export default function TaskManager() {
       }
     });
 
-    const eveningTasks = todayTasks.filter(task => {
+    const eveningTasks = todayTasks.filter((task) => {
       try {
         let taskDate = task.notificationTime.toDate();
         return taskDate.getHours() >= 18;
@@ -859,10 +979,17 @@ export default function TaskManager() {
                   <div className="flex items-center space-x-2 mb-1">
                     <span className="text-sm text-gray-500">08:00 ↻</span>
                   </div>
-                  <h3 className="font-semibold text-gray-900 text-lg">{morningTasks[0].title}</h3>
+                  <h3 className="font-semibold text-gray-900 text-lg">
+                    {morningTasks[0].title}
+                  </h3>
                 </div>
-                <div className={`w-6 h-6 rounded-full border-2 ${morningTasks[0].status === 'Completed' ? 'bg-red-500 border-red-500' : 'border-red-300'
-                  }`} />
+                <div
+                  className={`w-6 h-6 rounded-full border-2 ${
+                    morningTasks[0].status === "Completed"
+                      ? "bg-red-500 border-red-500"
+                      : "border-red-300"
+                  }`}
+                />
               </div>
             )}
             {eveningTasks.length > 0 && (
@@ -879,10 +1006,17 @@ export default function TaskManager() {
                   <div className="flex items-center space-x-2 mb-1">
                     <span className="text-sm text-gray-500">22:00 ↻</span>
                   </div>
-                  <h3 className="font-semibold text-gray-900 text-lg">{eveningTasks[0].title}</h3>
+                  <h3 className="font-semibold text-gray-900 text-lg">
+                    {eveningTasks[0].title}
+                  </h3>
                 </div>
-                <div className={`w-6 h-6 rounded-full border-2 ${eveningTasks[0].status === 'Completed' ? 'bg-blue-500 border-blue-500' : 'border-blue-300'
-                  }`} />
+                <div
+                  className={`w-6 h-6 rounded-full border-2 ${
+                    eveningTasks[0].status === "Completed"
+                      ? "bg-blue-500 border-blue-500"
+                      : "border-blue-300"
+                  }`}
+                />
               </div>
             )}
           </div>
@@ -893,7 +1027,7 @@ export default function TaskManager() {
 
   if (currentView === "calendar") {
     return (
-      <div className="min-h-screen" style={{ background: "#F0F5FB" }}>
+      <div className="min-h-screen" style={{ background: "#fff" }}>
         <Toaster position="top-right" />
         <div className="px-6 pt-8 pb-4">
           <h1 className="text-3xl font-bold text-gray-900">Calendar</h1>
@@ -902,15 +1036,11 @@ export default function TaskManager() {
         {renderCalendar()}
         {selectedDate ? renderSelectedDateTasks() : renderTodaySchedule()}
         <div
-          className="fixed bottom-0 left-0 right-0 bg-white border-gray-200 m-4"
-          style={{ borderRadius: "200px" }}
+          className="fixed bottom-0 left-0 right-0 bg-[#E9F3FF] border-gray-200 py-1"
         >
           <div className="flex justify-center items-center py-2">
             <div className="flex items-center space-x-6">
-              <button
-                className="p-4"
-                onClick={() => setCurrentView("home")}
-              >
+              <button className="p-4" onClick={() => setCurrentView("home")}>
                 <Home className="w-6 h-6 text-gray-400" />
               </button>
               <button
@@ -952,7 +1082,7 @@ export default function TaskManager() {
                 setNewTask({ ...newTask, title: e.target.value })
               }
               placeholder="กรอกชื่อ Task"
-              style={{ color: '#000' }}
+              style={{ color: "#000" }}
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -965,7 +1095,7 @@ export default function TaskManager() {
               onChange={(e) =>
                 setNewTask({ ...newTask, detail: e.target.value })
               }
-              style={{ color: '#000' }}
+              style={{ color: "#000" }}
               placeholder="กรอกรายละเอียด Task"
               rows={4}
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
@@ -982,7 +1112,7 @@ export default function TaskManager() {
                 onChange={(e) =>
                   setNewTask({ ...newTask, date: e.target.value })
                 }
-                style={{ color: '#000' }}
+                style={{ color: "#000" }}
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -998,7 +1128,7 @@ export default function TaskManager() {
                 onChange={(e) =>
                   setNewTask({ ...newTask, time: e.target.value })
                 }
-                style={{ color: '#000' }}
+                style={{ color: "#000" }}
                 className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -1009,7 +1139,7 @@ export default function TaskManager() {
             </label>
             <div className="relative">
               <select
-                style={{ color: '#000' }}
+                style={{ color: "#000" }}
                 value={newTask.repeat}
                 onChange={(e) =>
                   setNewTask({ ...newTask, repeat: e.target.value })
@@ -1036,7 +1166,7 @@ export default function TaskManager() {
                   onChange={(e) =>
                     setNewTask({ ...newTask, endDate: e.target.value })
                   }
-                  style={{ color: '#000' }}
+                  style={{ color: "#000" }}
                   className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -1058,15 +1188,11 @@ export default function TaskManager() {
           </div>
         </div>
         <div
-          className="fixed bottom-0 left-0 right-0 bg-white border-gray-200 m-4"
-          style={{ borderRadius: "200px" }}
+          className="fixed bottom-0 left-0 right-0 bg-[#E9F3FF] border-gray-200 py-1"
         >
           <div className="flex justify-center items-center py-2">
             <div className="flex items-center space-x-6">
-              <button
-                className="p-4"
-                onClick={() => setCurrentView("home")}
-              >
+              <button className="p-4" onClick={() => setCurrentView("home")}>
                 <Home className="w-6 h-6 text-gray-400" />
               </button>
               <button
@@ -1107,7 +1233,7 @@ export default function TaskManager() {
               onChange={(e) =>
                 setEditingTask({ ...editingTask, title: e.target.value })
               }
-              style={{ color: '#000' }}
+              style={{ color: "#000" }}
               placeholder="กรอกชื่อ Task"
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
@@ -1121,7 +1247,7 @@ export default function TaskManager() {
               onChange={(e) =>
                 setEditingTask({ ...editingTask, detail: e.target.value })
               }
-              style={{ color: '#000' }}
+              style={{ color: "#000" }}
               placeholder="กรอกรายละเอียด Task"
               rows={4}
               className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
@@ -1138,7 +1264,7 @@ export default function TaskManager() {
                 onChange={(e) =>
                   setEditingTask({ ...editingTask, date: e.target.value })
                 }
-                style={{ color: '#000' }}
+                style={{ color: "#000" }}
                 className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -1154,7 +1280,7 @@ export default function TaskManager() {
                 onChange={(e) =>
                   setEditingTask({ ...editingTask, time: e.target.value })
                 }
-                style={{ color: '#000' }}
+                style={{ color: "#000" }}
                 className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -1163,9 +1289,9 @@ export default function TaskManager() {
             <label className="block text-gray-700 text-sm font-medium mb-2">
               Status
             </label>
-            <div className="relative">
+            {/* <div className="relative">
               <select
-                style={{ color: '#000' }}
+                style={{ color: "#000" }}
                 value={editingTask.status}
                 onChange={(e) =>
                   setEditingTask({ ...editingTask, status: e.target.value })
@@ -1177,7 +1303,7 @@ export default function TaskManager() {
                 <option value="Incomplete">Incomplete</option>
               </select>
               <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-            </div>
+            </div> */}
           </div>
           <div>
             <label className="block text-gray-700 text-sm font-medium mb-2">
@@ -1185,7 +1311,7 @@ export default function TaskManager() {
             </label>
             <div className="relative">
               <select
-                style={{ color: '#000' }}
+                style={{ color: "#000" }}
                 value={editingTask.repeatType}
                 onChange={(e) =>
                   setEditingTask({ ...editingTask, repeatType: e.target.value })
@@ -1200,6 +1326,29 @@ export default function TaskManager() {
               <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
             </div>
           </div>
+          {editingTask.status === "Upcoming" && (
+            <div className="flex space-x-2 w-full">
+              <button
+                onClick={async () => {
+                  await handleCompleteTask(editingTask);
+                  await fetchTasks(); // Refresh list
+                }}
+                className="flex-1 flex items-center justify-center space-x-1 text-xs px-3 py-2 bg-green-100 text-green-600 rounded-md hover:bg-green-200 transition-colors"
+              >
+                <CheckCircle className="w-3 h-3" />
+                <span>Complete</span>
+              </button>
+
+              <button
+                onClick={() => handleDeleteTask(editingTask)}
+                className="flex-1 flex items-center justify-center space-x-1 text-xs px-3 py-2 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Delete</span>
+              </button>
+            </div>
+          )}
+
           <div className="flex space-x-4 pt-4">
             <button
               onClick={handleUpdateTask}
@@ -1219,8 +1368,7 @@ export default function TaskManager() {
           </div>
         </div>
         <div
-          className="fixed bottom-0 left-0 right-0 bg-white border-gray-200 m-4"
-          style={{ borderRadius: "200px" }}
+          className="fixed bottom-0 left-0 right-0 bg-[#E9F3FF] border-gray-200 py-1"
         >
           <div className="flex justify-center items-center py-2">
             <div className="flex items-center space-x-6">
@@ -1231,10 +1379,7 @@ export default function TaskManager() {
               >
                 <Home className="w-6 h-6 text-white" />
               </button>
-              <button
-                className="p-4"
-                onClick={() => setCurrentView("addTask")}
-              >
+              <button className="p-4" onClick={() => setCurrentView("addTask")}>
                 <Plus className="w-6 h-6 text-gray-400" />
               </button>
               <button
@@ -1252,7 +1397,7 @@ export default function TaskManager() {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: "#F0F5FB" }}>
+    <div className="min-h-screen" style={{ background: "#fff" }}>
       {session ? (
         <>
           <Toaster position="top-right" />
@@ -1279,10 +1424,11 @@ export default function TaskManager() {
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === tab
-                    ? "bg-blue-500 text-white"
-                    : "text-gray-500 hover:text-gray-700"
-                    }`}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    activeTab === tab
+                      ? "bg-blue-500 text-white"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
                 >
                   {tab}
                 </button>
@@ -1296,10 +1442,11 @@ export default function TaskManager() {
                   <button
                     key={filter}
                     onClick={() => setUpcomingFilter(filter)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${upcomingFilter === filter
-                      ? "bg-blue-100 text-blue-600 border border-blue-300"
-                      : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-                      }`}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                      upcomingFilter === filter
+                        ? "bg-blue-100 text-blue-600 border border-blue-300"
+                        : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+                    }`}
                   >
                     {filter}
                   </button>
@@ -1318,13 +1465,12 @@ export default function TaskManager() {
               </div>
             ) : (
               getFilteredTasks().map((task) => (
-                <div
-                  key={task.id}
-                  className={`border-l-4 ${getTaskBorderColor(
-                    task.color
-                  )} rounded-r-lg p-4`}
-                >
-                  <div className="flex justify-between items-start">
+                <div key={task.id} className="border-b pb-4">
+                  
+                  <div
+                    className="flex justify-between items-start"
+                    onClick={() => handleEditTask(task)}
+                  >
                     <div className="flex-1">
                       <h3
                         className="font-semibold text-gray-900 mb-2"
@@ -1332,18 +1478,20 @@ export default function TaskManager() {
                       >
                         {task.title}
                       </h3>
-                      {task.detail && (
+                      {/* {task.detail && (
                         <p className="text-gray-600 text-sm mb-2">
                           {task.detail}
                         </p>
-                      )}
-                      <div className="flex items-center text-gray-600 text-sm mb-1">
-                        <Calendar className="w-4 h-4 mr-2" />
-                        <span>{formatDate(task.notificationTime)} น.</span>
-                      </div>
-                      <div className="flex items-center text-gray-500 text-sm">
-                        <Clock className="w-4 h-4 mr-2" />
-                        <span>Repeat: {task.repeatType}</span>
+                      )} */}
+                      <div className="flex items-center">
+                        <div className="flex items-center text-gray-600 text-sm">
+                          <Calendar className="w-4 h-4 mr-2" />
+                          <span>{formatDate(task.notificationTime)} น.</span>
+                        </div>
+                        {/* <div className="flex items-center text-gray-500 text-sm ml-3">
+                          <Clock className="w-4 h-4 mr-2" />
+                          <span>Repeat: {task.repeatType}</span>
+                        </div> */}
                       </div>
                     </div>
                     <div className="flex flex-col items-end space-y-2">
@@ -1354,10 +1502,13 @@ export default function TaskManager() {
                       >
                         {task.status}
                       </span>
-                      {task.status === "Upcoming" && (
+                      {/* {task.status === "Upcoming" && (
                         <div className="flex space-x-2">
                           <button
-                            onClick={() => handleCompleteTask(task)}
+                            onClick={async () => {
+                              await handleCompleteTask(task);
+                              await fetchTasks(); // Refresh list after complete
+                            }}
                             className="flex items-center space-x-1 text-xs px-3 py-1 bg-green-100 text-green-600 rounded-md hover:bg-green-200 transition-colors"
                           >
                             <CheckCircle className="w-3 h-3" />
@@ -1389,7 +1540,7 @@ export default function TaskManager() {
                             <span>Delete</span>
                           </button>
                         </div>
-                      )}
+                      )} */}
                     </div>
                   </div>
                 </div>
@@ -1397,8 +1548,8 @@ export default function TaskManager() {
             )}
           </div>
           <div
-            className="fixed bottom-0 left-0 right-0 bg-white border-gray-200 m-4"
-            style={{ borderRadius: "200px" }}
+            className="fixed bottom-0 left-0 right-0 bg-[#E9F3FF] border-gray-200 py-1"
+            
           >
             <div className="flex justify-center items-center py-2">
               <div className="flex items-center space-x-6">
@@ -1440,4 +1591,3 @@ export default function TaskManager() {
     </div>
   );
 }
-
