@@ -100,6 +100,7 @@ async function classifyMessageWithAI(prompt) {
     - weather_check: User wants to know the weather for a location.
     - general_search: User is asking a general knowledge question or for a summary.
     - create_content: User wants to draft an email, social media post, script, or other text.
+    - msc: Anything that does not fit the above categories, but can understand by AI.
     - unknown: The intent does not match any of the above categories.
 
     User message: "${prompt}"
@@ -371,6 +372,25 @@ async function healthWithAI(prompt) {
   return aiAnswer;
 }
 
+
+
+async function mscWithAI(prompt) {
+  const mscPrompt = `
+  Answer, Suggest, Comment , Chit-chat, or any action as if you are a friendly personal secretary or assistant
+    miscellaneous User message: "${prompt}"
+  `;
+  const response = await openaiClient.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: mscPrompt }],
+    max_tokens: 200,
+    temperature: 0,
+  });
+  // FIX: Extract the text from the response object
+  const aiAnswer = response.choices[0].message.content.trim();
+  console.log(`[${getTimestamp()}] 🤖 AI answer msc message: ${aiAnswer}`);
+  return aiAnswer;
+}
+
 async function handlePostback(event) {
   const data = event.postback?.data;
   const userId = event.source?.userId;
@@ -439,7 +459,8 @@ app.post("/webhook", (req, res) => {
       if (event.type === "message" && event.message?.type === "text") {
         const messageText = event.message.text;
         if (!messageText.toLowerCase().startsWith("alin") && !messageText.startsWith("อลิน")) {
-          const replyMessage = { type: "text", text: `ได้รับข้อความ: ${messageText} 🤖\n\nใช้งานผ่านเว็บแอป: https://your-domain.com` };
+          // const replyMessage = { type: "text", text: `ได้รับข้อความ: ${messageText} 🤖\n\nใช้งานผ่านเว็บแอป: https://your-domain.com` };
+          const replyMessage = { type: "text", text: `กรุณา` };
           await sendReplyMessage(event.replyToken, [replyMessage]);
           return;
         }
@@ -580,10 +601,17 @@ app.post("/webhook", (req, res) => {
           await sendReplyMessage(event.replyToken, [replyMessage]);
         }
 
+        else if (intent === 'msc') {
+          const aiOutputContent = await mscWithAI(aiPrompt);
+          // const replyMessage = { type: "text", text: `ประเภทข้อความที่ตรวจพบ: ${intent}` }; 
+          const replyMessage = { type: "text", text: `${aiOutputContent}` };
+          await sendReplyMessage(event.replyToken, [replyMessage]);
+        }
+
 
         else {
           // const replyMessage = { type: "text", text: `ประเภทข้อความที่ตรวจพบ: ${intent}` };
-          const replyMessage = { type: "text", text: "Alin ขอโทษค่ะ Alin ไม่สามารถเข้าใจคำสั่งนี้ได้ รบกวนพิมพ์มาใหม่อีกรอบนะคะ" };
+          const replyMessage = { type: "text", text: "อลินขอโทษค่ะ อลินไม่สามารถเข้าใจคำสั่งนี้ได้ รบกวนพิมพ์มาใหม่อีกรอบนะคะ" };
           await sendReplyMessage(event.replyToken, [replyMessage]);
         }
 
