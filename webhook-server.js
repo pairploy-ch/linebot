@@ -101,7 +101,6 @@ async function classifyMessageWithAI(prompt) {
     - general_search: User is asking a general knowledge question or for a summary.
     - create_content: User wants to draft an email, social media post, script, or other text.
     - msc: Anything that does not fit the above categories, but can understand by AI.
-    - unknown: The intent does not match any of the above categories.
 
     User message: "${prompt}"
     
@@ -601,7 +600,7 @@ app.post("/webhook", (req, res) => {
           await sendReplyMessage(event.replyToken, [replyMessage]);
         }
 
-        else if (intent === 'msc') {
+        else {
           const aiOutputContent = await mscWithAI(aiPrompt);
           // const replyMessage = { type: "text", text: `ประเภทข้อความที่ตรวจพบ: ${intent}` }; 
           const replyMessage = { type: "text", text: `${aiOutputContent}` };
@@ -609,11 +608,11 @@ app.post("/webhook", (req, res) => {
         }
 
 
-        else {
-          // const replyMessage = { type: "text", text: `ประเภทข้อความที่ตรวจพบ: ${intent}` };
-          const replyMessage = { type: "text", text: "อลินขอโทษค่ะ อลินไม่สามารถเข้าใจคำสั่งนี้ได้ รบกวนพิมพ์มาใหม่อีกรอบนะคะ" };
-          await sendReplyMessage(event.replyToken, [replyMessage]);
-        }
+        // else {
+        //   // const replyMessage = { type: "text", text: `ประเภทข้อความที่ตรวจพบ: ${intent}` };
+        //   const replyMessage = { type: "text", text: "อลินขอโทษค่ะ อลินไม่สามารถเข้าใจคำสั่งนี้ได้ รบกวนพิมพ์มาใหม่อีกรอบนะคะ" };
+        //   await sendReplyMessage(event.replyToken, [replyMessage]);
+        // }
 
 
       } else if (event.type === "postback") {
