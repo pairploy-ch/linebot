@@ -1027,7 +1027,7 @@ const formatDate = (dateValue, options = {}) => {
 
   if (currentView === "calendar") {
     return (
-      <div className="min-h-screen" style={{ background: "#fff" }}>
+      <div className="min-h-screen" style={{ background: "rgb(240 245 251 / 77%)" }}>
         <Toaster position="top-right" />
         <div className="px-6 pt-8 pb-4">
           <h1 className="text-3xl font-bold text-gray-900">Calendar</h1>
@@ -1397,7 +1397,7 @@ const formatDate = (dateValue, options = {}) => {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: "#fff" }}>
+    <div className="min-h-screen" style={{ background: "rgb(240 245 251 / 77%)" }}>
       {session ? (
         <>
           <Toaster position="top-right" />
@@ -1465,7 +1465,7 @@ const formatDate = (dateValue, options = {}) => {
               </div>
             ) : (
               getFilteredTasks().map((task) => (
-                <div key={task.id} className="border-b pb-4">
+                <div key={task.id} className="pb-4" style={{borderBottom: '1px solid #E5E5E5'}}>
                   
                   <div
                     className="flex justify-between items-start"
