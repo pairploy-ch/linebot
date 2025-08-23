@@ -91,8 +91,7 @@ async function classifyMessageWithAI(prompt) {
 You are an intent classifier for a personal assistant. Your job is to determine the user's intent from the message and respond with a single, specific category code. Do not include any other text, explanation, or punctuation.
     
     Categories:
-    - create_task: User write a certain thing (possibly no obvious words indicated the desire to create task : it is not an obvious question, it is just a shorten message that user want to create their task) (don't confuse with general search or health query)
-    - summarize_task: User wants to know, summarize or list tasks within a specific date range (maybe no obvious word)
+    - create_task: User write a certain thing (if it is not a question, it is create_task even though there is no obvious word)
     - general_search: User is asking a general knowledge question or for a summary.
     - create_content: User wants to draft an email, social media post, script, or other text.
     - unknown: The intent does not match any of the above categories.
