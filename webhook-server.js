@@ -93,8 +93,6 @@ async function classifyMessageWithAI(prompt) {
     Categories:
     - create_task: User wants to create a new task or reminder (may be no obvious words indicated the desire to create task, and if it is not an obvious question, it is a shorten message that user want to create their task) (don't confuse with general search or health query)
     - summarize_task: User wants to know, summarize or list tasks within a specific date range (maybe no obvious word)
-    - health_query: User is asking a medical or health-related question.
-    - weather_check: User wants to know the weather for a location.
     - general_search: User is asking a general knowledge question or for a summary.
     - create_content: User wants to draft an email, social media post, script, or other text.
     - unknown: The intent does not match any of the above categories.
@@ -104,6 +102,20 @@ async function classifyMessageWithAI(prompt) {
     Your response (single category code only):
   `;
 
+    // You are an intent classifier for a personal assistant. Your job is to determine the user's intent from the message and respond with a single, specific category code. Do not include any other text, explanation, or punctuation.
+    
+    // Categories:
+    // - create_task: User wants to create a new task or reminder (may be no obvious words indicated the desire to create task, and if it is not an obvious question, it is a shorten message that user want to create their task) (don't confuse with general search or health query)
+    // - summarize_task: User wants to know, summarize or list tasks within a specific date range (maybe no obvious word)
+    // - health_query: User is asking a medical or health-related question.
+    // - weather_check: User wants to know the weather for a location.
+    // - general_search: User is asking a general knowledge question or for a summary.
+    // - create_content: User wants to draft an email, social media post, script, or other text.
+    // - unknown: The intent does not match any of the above categories.
+
+    // User message: "${prompt}"
+    
+    // Your response (single category code only):
 
   const response = await openaiClient.chat.completions.create({
     model: "gpt-4o-mini",
