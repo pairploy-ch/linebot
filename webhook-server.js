@@ -116,7 +116,7 @@ You are an intent classifier for a personal assistant. Your job is to determine 
   // Your response (single category code only):
 
   const response = await openaiClient.chat.completions.create({
-    model: "gpt-4o-mini",
+    model: "gpt-4o",
     messages: [{ role: "user", content: classificationPrompt }],
     max_tokens: 10,
     temperature: 0,
