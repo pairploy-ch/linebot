@@ -91,11 +91,8 @@ async function classifyMessageWithAI(prompt) {
     You are an intent classifier for a personal assistant. Your job is to determine the user's intent from the message and respond with a single, specific category code. Do not include any other text, explanation, or punctuation.
     
     Categories:
-    - create_task: User wants to create a new task or reminder (if it is work, it is; may be no obvious words indicated the desire to create task).
-    - summarize_task: User wants to know, summarize or list tasks within a specific date range.
-    - edit_task: User wants to modify or update a task.
-    - delete_task: User wants to delete or cancel a task.
-    - complete_task: User wants to mark a task as completed.
+    - create_task: User wants to create a new task or reminder (may be no obvious words indicated the desire to create task, but if you can know it is talking about a task in a certain period, it is to create task).
+    - summarize_task: User wants to know, summarize or list tasks within a specific date range (maybe no obvious word)
     - health_query: User is asking a medical or health-related question.
     - weather_check: User wants to know the weather for a location.
     - general_search: User is asking a general knowledge question or for a summary.
@@ -197,7 +194,7 @@ async function createTaskWithAI(prompt) {
 
     {
       "intent": "add_reminder",
-      "task": "<สิ่งที่ต้องทำ>", (ไม่เกิน 5 คำ)
+      "task": "<สิ่งที่ต้องทำ>", (ไม่เกิน 8 คำ)
       "time": "<HH:MM>",
       "date": "<YYYY-MM-DD>",
       "repeat": "<once | daily | weekly | monthly | yearly>"
@@ -215,8 +212,11 @@ async function createTaskWithAI(prompt) {
     "error" : "title" 
     }
 
-    ถ้าไม่มีเวลาบอก > 8.00
-    ถ้าไม่มีวันที่บอก > วันนี้
+    ถ้าไม่มีวันที่บอก : date = วันนี้
+    ถ้าไม่มีเวลาบอก : time = 8.00
+    ถ้าเลยเวลาปัจจุบัน ในกรณีไม่บอกวันที่ ให้ตั้งเป็นวันถัดไป
+    
+
 
     User message: "${prompt}"
   `;
