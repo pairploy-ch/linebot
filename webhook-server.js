@@ -8,8 +8,6 @@ const { Timestamp } = require('firebase-admin/firestore');
 const app = express();
 const port = process.env.PORT || 3001;
 
-
-
 // Load environment variables for AI and LINE
 require('dotenv').config();
 
@@ -102,21 +100,6 @@ You are an intent classifier for a personal assistant. Your job is to determine 
     Your response (single category code only):
   `;
 
-  // You are an intent classifier for a personal assistant. Your job is to determine the user's intent from the message and respond with a single, specific category code. Do not include any other text, explanation, or punctuation.
-
-  // Categories:
-  // - create_task: User wants to create a new task or reminder (may be no obvious words indicated the desire to create task, and if it is not an obvious question, it is a shorten message that user want to create their task) (don't confuse with general search or health query)
-  // - summarize_task: User wants to know, summarize or list tasks within a specific date range (maybe no obvious word)
-  // - health_query: User is asking a medical or health-related question.
-  // - weather_check: User wants to know the weather for a location.
-  // - general_search: User is asking a general knowledge question or for a summary.
-  // - create_content: User wants to draft an email, social media post, script, or other text.
-  // - unknown: The intent does not match any of the above categories.
-
-  // User message: "${prompt}"
-
-  // Your response (single category code only):
-
   const response = await openaiClient.chat.completions.create({
     model: "gpt-4o",
     messages: [{ role: "user", content: classificationPrompt }],
@@ -127,6 +110,20 @@ You are an intent classifier for a personal assistant. Your job is to determine 
   const category = response.choices[0].message.content.trim();
   console.log(`[${getTimestamp()}] 🤖 AI Classified intent: ${category}`);
   return category;
+}
+
+/**
+ * Helper function to format the date in Thai, including the weekday.
+ * @param {Date} date - The date to format.
+ * @returns {string} The formatted date string with weekday.
+ */
+function formatDateInThai(date) {
+  return date.toLocaleDateString("th-TH", {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
 }
 
 // === NEW FUNCTIONS FROM SUMMARY.JS ===
@@ -178,21 +175,6 @@ async function summarizeDateRangeWithAI(prompt) {
   const range_analysis = response.choices[0].message.content.trim();
   console.log(`[${getTimestamp()}] 🤖 AI Date Range Analysis: ${range_analysis}`);
   return JSON.parse(range_analysis);
-}
-
-/**
- * Helper function to format the date in Thai.
- * @param {Date} date - The date to format.
- * @returns {string} The formatted date string.
- */
-function formatDateInThai(date) {
-  const monthNames = [
-    'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
-    'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
-  ];
-  const day = date.getDate();
-  const monthIndex = date.getMonth();
-  return `${day} ${monthNames[monthIndex]}`;
 }
 
 
@@ -487,10 +469,17 @@ app.post("/webhook", (req, res) => {
             const result = await handleAddTaskServer(taskDataToCreate, event.source.userId, event.source.displayName || "LINE User");
 
             if (result.success) {
-              // MODIFIED: Added date and time to the reply message
+              // MODIFIED: Added date and time to the reply message, with weekday
+              const taskDate = new Date(`${taskDataToCreate.date}T${taskDataToCreate.time}`);
+              const formattedDateWithWeekday = taskDate.toLocaleDateString("th-TH", {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric'
+              });
               const replyMessage = {
                 type: "text",
-                text: `✅ Task "${taskDataToCreate.title}" has been created for ${taskDataToCreate.date} at ${taskDataToCreate.time}.`
+                text: `✅ Task "${taskDataToCreate.title}" has been created for ${formattedDateWithWeekday} at ${taskDataToCreate.time}.`
               };
               await sendReplyMessage(event.replyToken, [replyMessage]);
             } else {
@@ -556,25 +545,36 @@ app.post("/webhook", (req, res) => {
           let message;
           if (allNotifications.length > 0) {
             if (aiResult.range_type === 1) {
-              const singleDateName = formatDateInThai(startDate);
-              message = `ในวันที่ ${singleDateName} คุณมีทั้งหมด ${allNotifications.length} งาน\n\n`;
+              const singleDateName = startDate.toLocaleDateString("th-TH", {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+              });
+              message = `ใน${singleDateName} คุณมีทั้งหมด ${allNotifications.length} งาน\n\n`;
             } else {
-              const startMonthName = formatDateInThai(startDate).split(' ')[1];
-              const endMonthName = formatDateInThai(endDate).split(' ')[1];
+              const startMonthName = startDate.toLocaleDateString("th-TH", { month: 'long' });
+              const endMonthName = endDate.toLocaleDateString("th-TH", { month: 'long' });
               message = `ในระหว่างวันที่ ${startDate.getDate()} ${startMonthName} ถึง วันที่ ${endDate.getDate()} ${endMonthName} คุณมีทั้งหมด ${allNotifications.length} งาน\n\n`;
             }
 
             allNotifications.forEach((noti, i) => {
               const notificationDate = noti.notificationTime.toDate();
-              const datePart = formatDateInThai(notificationDate);
-              const timePart = `${String(notificationDate.getHours()).padStart(2, '0')}:${String(notificationDate.getMinutes()).padStart(2, '0')}`;
+              const formattedDate = notificationDate.toLocaleDateString("th-TH", {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+              });
 
+              let dateString;
               // MODIFIED: Conditionally add the time based on range_type
               if (aiResult.range_type === 1) {
-                message += `${i + 1}. ${noti.parentTaskTitle} : ${datePart} ${timePart}\n`;
+                const timePart = `${String(notificationDate.getHours()).padStart(2, '0')}:${String(notificationDate.getMinutes()).padStart(2, '0')}`;
+                dateString = `${formattedDate} เวลา ${timePart}`;
               } else {
-                message += `${i + 1}. ${noti.parentTaskTitle} : ${datePart}\n`;
+                dateString = formattedDate;
               }
+
+              message += `${i + 1}. ${noti.parentTaskTitle} : ${dateString}\n`;
             });
           } else {
             message = `ไม่พบงานในช่วงเวลาที่คุณระบุค่ะ`;
@@ -605,7 +605,6 @@ app.post("/webhook", (req, res) => {
 
 
         else {
-          // const replyMessage = { type: "text", text: `ประเภทข้อความที่ตรวจพบ: ${intent}` };
           const replyMessage = { type: "text", text: "Alin ขอโทษค่ะ Alin ไม่สามารถเข้าใจคำสั่งนี้ได้ รบกวนพิมพ์มาใหม่อีกรอบนะคะ" };
           await sendReplyMessage(event.replyToken, [replyMessage]);
         }
