@@ -117,14 +117,7 @@ You are an intent classifier for a personal assistant. Your job is to determine 
  * @param {Date} date - The date to format.
  * @returns {string} The formatted date string with weekday.
  */
-function formatDateInThai(date) {
-  return date.toLocaleDateString("th-TH", {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric'
-  });
-}
+
 
 // === NEW FUNCTIONS FROM SUMMARY.JS ===
 
@@ -407,7 +400,7 @@ async function handlePostback(event) {
 
       await sendReplyMessage(event.replyToken, [{
         type: "text",
-        text: `✅ Task "${parentTaskData.title}" has been marked as completed.`
+        text: `งาน "${parentTaskData.title}" เสร็จสิ้นแล้ว`
       }]);
 
       console.log(`[${getTimestamp()}] 🔥 Postback complete_task processed for notification: ${notificationId}`);
@@ -475,11 +468,11 @@ app.post("/webhook", (req, res) => {
                 weekday: 'long',
                 day: 'numeric',
                 month: 'long',
-                year: 'numeric'
+                // year: 'numeric'
               });
               const replyMessage = {
                 type: "text",
-                text: `✅ Task "${taskDataToCreate.title}" has been created for ${formattedDateWithWeekday} at ${taskDataToCreate.time}.`
+                text: `สร้างการแจ้งเตือน "${taskDataToCreate.title}"  ${formattedDateWithWeekday} เวลา ${taskDataToCreate.time}.`
               };
               await sendReplyMessage(event.replyToken, [replyMessage]);
             } else {
