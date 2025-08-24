@@ -248,7 +248,7 @@ async function createTaskWithAI(prompt) {
 async function contentWithAI(prompt) {
   const createContentPrompt = `
       ช่วย user เขียนข้อความสั้นๆ ที่เกี่ยวกับการสร้างเนื้อหา เช่น อีเมล โพสต์โซเชียลมีเดีย หรือสคริปต์ หรืออื่นๆตามที่ต้องการ
-
+      
     User message: "${prompt}"
   `;
 
@@ -487,7 +487,11 @@ app.post("/webhook", (req, res) => {
             const result = await handleAddTaskServer(taskDataToCreate, event.source.userId, event.source.displayName || "LINE User");
 
             if (result.success) {
-              const replyMessage = { type: "text", text: `✅ Task "${taskDataToCreate.title}" has been created.` };
+              // MODIFIED: Added date and time to the reply message
+              const replyMessage = {
+                type: "text",
+                text: `✅ Task "${taskDataToCreate.title}" has been created for ${taskDataToCreate.date} at ${taskDataToCreate.time}.`
+              };
               await sendReplyMessage(event.replyToken, [replyMessage]);
             } else {
               const replyMessage = { type: "text", text: "❌ Failed to create task. Please try again." };
@@ -561,8 +565,16 @@ app.post("/webhook", (req, res) => {
             }
 
             allNotifications.forEach((noti, i) => {
-              const notificationDate = formatDateInThai(noti.notificationTime.toDate());
-              message += `${i + 1}. ${noti.parentTaskTitle} : ${notificationDate}\n`;
+              const notificationDate = noti.notificationTime.toDate();
+              const datePart = formatDateInThai(notificationDate);
+              const timePart = `${String(notificationDate.getHours()).padStart(2, '0')}:${String(notificationDate.getMinutes()).padStart(2, '0')}`;
+
+              // MODIFIED: Conditionally add the time based on range_type
+              if (aiResult.range_type === 1) {
+                message += `${i + 1}. ${noti.parentTaskTitle} : ${datePart} ${timePart}\n`;
+              } else {
+                message += `${i + 1}. ${noti.parentTaskTitle} : ${datePart}\n`;
+              }
             });
           } else {
             message = `ไม่พบงานในช่วงเวลาที่คุณระบุค่ะ`;
