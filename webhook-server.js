@@ -86,119 +86,48 @@ async function sendReplyMessage(replyToken, messages) {
   }
 }
 
-// async function classifyMessageWithAI(prompt) {
-//     const classificationPrompt = `
-//   You are an intent classifier for a personal assistant. Your job is to determine the user's intent from the message and respond with a single, specific category code. Do not include any other text, explanation, or punctuation.
-
-//       Categories:
-//       - create_task: User write a certain thing which seems to be a task (if it is not a question, it is create_task even though there is no obvious word)
-//       - general_search: User is asking a general knowledge question or for a summary.
-//       - create_content: User wants to draft an email, social media post, script, or other text.
-//       - unknown: The intent does not match any of the above categories.
-
-//       Your response (single category code only):
-//     `;
-
-
-//     const response = await openaiClient.chat.completions.create({
-//       model: "gpt-4o",
-//       messages: [{ role: "user", content: classificationPrompt }],
-//       max_tokens: 10,
-//       temperature: 0,
-//     });
-
-//   const user_input = prompt
-
-//   const system_prompt = `
-//     You are an intent classifier for a personal assistant. Your job is to determine the user's intent from the message and respond with a single, specific category code. Do not include any other text, explanation, or punctuation.
-
-//     Categories:
-//     - create_task: User write a certain thing (if it is not a question, it is create_task even though there is no obvious word)
-//     - general_search: User is asking a general knowledge question or for a summary.
-//     - create_content: User wants to draft an email, social media post, script, or other text.
-//     - unknown: The intent does not match any of the above categories.
-
-//     Your response (single category code only):
-// `
-
-//   const response = client.chat.completions.create({
-//     model: "gpt-4o",
-//     messages: [
-//       { "role": "system", "content": system_prompt },
-//       { "role": "user", "content": user_input }
-//     ],
-//     max_tokens: 10,
-//     temperature: 0,
-//   });
-
-
-
-
-//   const category = response.choices[0].message.content.trim();
-//   console.log(`[${getTimestamp()}] 🤖 AI Classified intent: ${category}`);
-//   return category;
-// }
-
-
 async function classifyMessageWithAI(prompt) {
-  const user_input = prompt;
-
-  const system_prompt = `
+  const classificationPrompt = `
 You are an intent classifier for a personal assistant. Your job is to determine the user's intent from the message and respond with a single, specific category code. Do not include any other text, explanation, or punctuation.
+    
+    Categories:
+    - create_task: User write a certain thing which seems to be a task or thing user is to do
+    - summarize_task: User wants to know, summarize or list tasks within a specific date range (maybe no obvious word)
+    - general_search: User is asking a general knowledge question or for a summary.
+    - create_content: User wants to draft an email, social media post, script, or other text.
+    - unknown: The intent does not match any of the above categories.
 
-Categories:
-- create_task: User write a certain thing (if it is not a question, it is create_task even though there is no obvious word)
-- general_search: User is asking a general knowledge question or for a summary.
-- create_content: User wants to draft an email, social media post, script, or other text.
-- unknown: The intent does not match any of the above categories.
 
-Your response (single category code only):
-`.trim();
+    User message: "${prompt}"
+    Your response (single category code only):
+  `;
 
-  try {
-    const response = await client.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: system_prompt },
-        { role: "user", content: user_input }
-      ],
-      max_tokens: 10,
-      temperature: 0,
-    });
+  // You are an intent classifier for a personal assistant. Your job is to determine the user's intent from the message and respond with a single, specific category code. Do not include any other text, explanation, or punctuation.
 
-    let category = (response.choices?.[0]?.message?.content || "").trim().toLowerCase();
+  // Categories:
+  // - create_task: User wants to create a new task or reminder (may be no obvious words indicated the desire to create task, and if it is not an obvious question, it is a shorten message that user want to create their task) (don't confuse with general search or health query)
+  // - summarize_task: User wants to know, summarize or list tasks within a specific date range (maybe no obvious word)
+  // - health_query: User is asking a medical or health-related question.
+  // - weather_check: User wants to know the weather for a location.
+  // - general_search: User is asking a general knowledge question or for a summary.
+  // - create_content: User wants to draft an email, social media post, script, or other text.
+  // - unknown: The intent does not match any of the above categories.
 
-    // Hard-guard to allowed labels:
-    const allowed = new Set(["create_task", "general_search", "create_content", "unknown"]);
-    if (!allowed.has(category)) category = "unknown";
+  // User message: "${prompt}"
 
-    console.log(`[${typeof getTimestamp === "function" ? getTimestamp() : new Date().toISOString()}] 🤖 AI Classified intent: ${category}`);
-    return category;
-  } catch (err) {
-    console.error("Intent classification error:", err);
-    return "unknown";
-  }
+  // Your response (single category code only):
+
+  const response = await openaiClient.chat.completions.create({
+    model: "gpt-4o",
+    messages: [{ role: "user", content: classificationPrompt }],
+    max_tokens: 10,
+    temperature: 0,
+  });
+
+  const category = response.choices[0].message.content.trim();
+  console.log(`[${getTimestamp()}] 🤖 AI Classified intent: ${category}`);
+  return category;
 }
-
-
-
-// You are an intent classifier for a personal assistant. Your job is to determine the user's intent from the message and respond with a single, specific category code. Do not include any other text, explanation, or punctuation.
-
-// Categories:
-// - create_task: User wants to create a new task or reminder (may be no obvious words indicated the desire to create task, and if it is not an obvious question, it is a shorten message that user want to create their task) (don't confuse with general search or health query)
-// - summarize_task: User wants to know, summarize or list tasks within a specific date range (maybe no obvious word)
-// - health_query: User is asking a medical or health-related question.
-// - weather_check: User wants to know the weather for a location.
-// - general_search: User is asking a general knowledge question or for a summary.
-// - create_content: User wants to draft an email, social media post, script, or other text.
-// - unknown: The intent does not match any of the above categories.
-
-// User message: "${prompt}"
-
-// Your response (single category code only):
-
-
-
 
 // === NEW FUNCTIONS FROM SUMMARY.JS ===
 
