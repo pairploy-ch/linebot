@@ -117,7 +117,14 @@ You are an intent classifier for a personal assistant. Your job is to determine 
  * @param {Date} date - The date to format.
  * @returns {string} The formatted date string with weekday.
  */
-
+function formatDateInThai(date) {
+  return date.toLocaleDateString("th-TH", {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+}
 
 // === NEW FUNCTIONS FROM SUMMARY.JS ===
 
@@ -148,7 +155,7 @@ async function summarizeDateRangeWithAI(prompt) {
   - range_type = 2
 - ถ้าให้ชื่อเดือน/สัปดาห์โดยไม่ระบุวัน ให้ตีความเป็นช่วงทั้งหมดของหน่วยนั้น:
   - เดือน: จากวันแรกของเดือนนี้ถึงวันสุดท้ายของเดือนนี้
-  - สัปดาห์: เริ่มจากวันนี้ และรับไปอีก 7 วัน
+  - สัปดาห์: ให้เริ่มจากวันนี้ และไปสิ้นสุดภายใน 7 วัน (รวมวันเริ่มต้น)
 - ถ้าไม่พบวันที่จากข้อความ ให้ตอบ:
   {
     "error": "date"
@@ -468,7 +475,7 @@ app.post("/webhook", (req, res) => {
                 weekday: 'long',
                 day: 'numeric',
                 month: 'long',
-                // year: 'numeric'
+                year: 'numeric'
               });
               const replyMessage = {
                 type: "text",
@@ -557,7 +564,7 @@ app.post("/webhook", (req, res) => {
                 day: 'numeric',
                 month: 'long',
               });
-
+              
               let dateString;
               // MODIFIED: Conditionally add the time based on range_type
               if (aiResult.range_type === 1) {
@@ -566,7 +573,7 @@ app.post("/webhook", (req, res) => {
               } else {
                 dateString = formattedDate;
               }
-
+              
               message += `${i + 1}. ${noti.parentTaskTitle} : ${dateString}\n`;
             });
           } else {
