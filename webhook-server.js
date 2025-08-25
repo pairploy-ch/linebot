@@ -194,14 +194,16 @@ async function createTaskWithAI(prompt) {
       "task": "<สิ่งที่ต้องทำ>", (ไม่เกิน 8 คำ)
       "time": "<HH:MM>",
       "date": "<YYYY-MM-DD>",
-      "repeat": "<once | daily | weekly | monthly | yearly>"
+      "repeat": "<once | daily | weekly | monthly | yearly>",
+      "endDate": "<YYYY-MM-DD>"
     }
 
     กติกา:
     - today date is ${currentDate}
     - “พรุ่งนี้”, “วันนี้” → แปลงเป็นวันที่จริง 
     - “ทุกวัน/พุธ” → set repeat ให้ตรง
-    - ไม่มีคำซ้ำ → repeat = once
+    - ถ้าไม่มีคำซ้ำ → repeat = once
+    - **ถ้า repeat ไม่ใช่ once และไม่มีการระบุ endDate ให้ตั้งค่า endDate เป็น 30 วันนับจาก date ที่เริ่ม**
     ตอบกลับเป็น JSON เท่านั้น ห้ามมีคำอธิบาย
 
     ถ้าไม่มี task ให้เขียนส่งเป็นไฟล์ json
@@ -250,6 +252,31 @@ async function contentWithAI(prompt) {
   return text_file_analysis;
 }
 
+// Function to calculate all notification dates based on repeat type and end date
+const calculateNotificationDates = (startDate, time, repeat, endDate) => {
+  const dates = [];
+  // FIX: Handle Thai Buddhist year (B.E.) to Gregorian year (A.D.) conversion
+  const startYear = parseInt(startDate.substring(0, 4), 10);
+  const gregorianYear = startYear > 2500 ? startYear - 543 : startYear;
+  const gregorianStartDate = `${gregorianYear}${startDate.substring(4)}`;
+
+  let currentDate = moment.tz(`${gregorianStartDate}T${time}`, "Asia/Bangkok");
+
+  // FIX: Added a check for endDate being undefined
+  const end = repeat === "Never" || !endDate 
+    ? currentDate.clone() 
+    : moment.tz(`${endDate}T23:59:59`, "Asia/Bangkok");
+
+  while (currentDate.isSameOrBefore(end)) {
+    dates.push(currentDate.toDate());
+    if (repeat === "Daily") currentDate.add(1, "day");
+    else if (repeat === "Weekly") currentDate.add(1, "week");
+    else if (repeat === "Monthly") currentDate.add(1, "month");
+    else break; // For 'Never' repeat type
+  }
+  return dates;
+};
+
 // New server-side task creation function, adapted from page.js
 async function handleAddTaskServer(taskData, lineUserId, userName) {
   console.log(`[${getTimestamp()}] 📝 Starting task creation for user: ${lineUserId}`);
@@ -280,31 +307,6 @@ async function handleAddTaskServer(taskData, lineUserId, userName) {
     console.log(`[${getTimestamp()}] ✅ Parent task document created with ID: ${docRef.id}`);
 
     // Step 3: Calculate and create notifications as a subcollection
-    const calculateNotificationDates = (startDate, time, repeat, endDate) => {
-      const dates = [];
-      // FIX: Handle Thai Buddhist year (B.E.) to Gregorian year (A.D.) conversion
-      const startYear = parseInt(startDate.substring(0, 4), 10);
-      const gregorianYear = startYear > 2500 ? startYear - 543 : startYear;
-      const gregorianStartDate = `${gregorianYear}${startDate.substring(4)}`;
-
-      let currentDate = moment.tz(`${gregorianStartDate}T${time}`, "Asia/Bangkok");
-
-      const endYear = parseInt(endDate.substring(0, 4), 10);
-      const gregorianEndYear = endYear > 2500 ? endYear - 543 : endYear;
-      const gregorianEndDate = `${gregorianEndYear}${endDate.substring(4)}`;
-
-      const end = repeat === "Never" ? currentDate.clone() : moment.tz(`${gregorianEndDate}T23:59:59`, "Asia/Bangkok");
-
-      while (currentDate.isSameOrBefore(end)) {
-        dates.push(currentDate.toDate());
-        if (repeat === "Daily") currentDate.add(1, "day");
-        else if (repeat === "Weekly") currentDate.add(1, "week");
-        else if (repeat === "Monthly") currentDate.add(1, "month");
-        else break; // For 'Never' repeat type
-      }
-      return dates;
-    };
-
     const notificationDates = calculateNotificationDates(
       taskData.date,
       taskData.time,
