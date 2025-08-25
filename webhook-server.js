@@ -238,13 +238,16 @@ async function contentWithAI(prompt) {
 }
 
 // =================================================================================================
-// ✨ NEW FUNCTION TO CREATE A FLEX MESSAGE FOR TASK CREATION CONFIRMATION
+// ✨ MODIFIED FUNCTION TO CREATE A SIMPLIFIED FLEX MESSAGE
 // =================================================================================================
 function createTaskConfirmationFlexMessage(task) {
   const messageDate = moment.tz(`${task.date}T${task.time}`, 'Asia/Bangkok');
-  const dateDisplay = messageDate.isValid()
-    ? messageDate.format('DD/MM/YYYY HH:mm น.')
-    : 'ไม่ระบุเวลา';
+  
+  // Set locale to Thai for month names
+  const dateDisplay = messageDate.locale('th').format('D MMMM YYYY');
+  const timeDisplay = messageDate.format('HH:mm น.');
+
+  const confirmationText = `สร้างการแจ้งเตือน "${task.title}" แล้ว สำหรับวันที่ ${dateDisplay} เวลา ${timeDisplay}`;
   const liffUrl = "https://liff.line.me/2007809557-PQXApdR3";
 
   return {
@@ -252,7 +255,7 @@ function createTaskConfirmationFlexMessage(task) {
     altText: `✅ สร้างแจ้งเตือน: ${task.title}`,
     contents: {
       type: "bubble",
-      size: "kilo",
+      size: "giga", // Use giga for more space
       header: {
         type: "box",
         layout: "vertical",
@@ -275,74 +278,10 @@ function createTaskConfirmationFlexMessage(task) {
         contents: [
           {
             type: "text",
-            text: task.title,
-            weight: "bold",
-            size: "xl",
-            color: "#1f2937",
+            text: confirmationText,
             wrap: true,
-            margin: "none"
-          },
-          {
-            type: "text",
-            text: task.detail || "ไม่มีรายละเอียด",
             size: "md",
-            color: "#6b7280",
-            wrap: true,
-            margin: "md"
-          },
-          {
-            type: "separator",
-            margin: "lg"
-          },
-          {
-            type: "box",
-            layout: "vertical",
-            contents: [
-              {
-                type: "box",
-                layout: "horizontal",
-                contents: [
-                  {
-                    type: "text",
-                    text: "🕐",
-                    size: "sm",
-                    color: "#6b7280",
-                    flex: 0
-                  },
-                  {
-                    type: "text",
-                    text: `First one at: ${dateDisplay}`,
-                    size: "sm",
-                    color: "#6b7280",
-                    flex: 1,
-                    margin: "sm"
-                  }
-                ]
-              },
-              {
-                type: "box",
-                layout: "horizontal",
-                contents: [
-                  {
-                    type: "text",
-                    text: "🔄",
-                    size: "sm",
-                    color: "#6b7280",
-                    flex: 0
-                  },
-                  {
-                    type: "text",
-                    text: `Repeat: ${task.repeat || 'Never'}`,
-                    size: "sm",
-                    color: "#6b7280",
-                    flex: 1,
-                    margin: "sm"
-                  }
-                ]
-              }
-            ],
-            margin: "lg",
-            spacing: "sm"
+            color: "#1f2937"
           }
         ],
         paddingAll: "20px"
