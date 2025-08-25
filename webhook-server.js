@@ -115,11 +115,6 @@ You are an intent classifier for a personal assistant. Your job is to determine 
   return category;
 }
 
-/**
- * Helper function to format the date in Thai, including the weekday.
- * @param {Date} date - The date to format.
- * @returns {string} The formatted date string with weekday.
- */
 function formatDateInThai(date) {
   return date.toLocaleDateString("th-TH", {
     weekday: 'long',
@@ -129,13 +124,6 @@ function formatDateInThai(date) {
   });
 }
 
-// === NEW FUNCTIONS FROM SUMMARY.JS ===
-
-/**
- * Uses an AI to parse a natural language prompt for date ranges.
- * @param {string} prompt - The natural language prompt from the user.
- * @returns {Promise<object>} The parsed date range in a structured JSON format.
- */
 async function summarizeDateRangeWithAI(prompt) {
   const now = moment().tz("Asia/Bangkok");
   const currentDate = now.format("dddd DD/MM/YYYY HH.mm");
@@ -179,9 +167,6 @@ async function summarizeDateRangeWithAI(prompt) {
   console.log(`[${getTimestamp()}] 🤖 AI Date Range Analysis: ${range_analysis}`);
   return JSON.parse(range_analysis);
 }
-
-
-// === END OF NEW FUNCTIONS ===
 
 async function createTaskWithAI(prompt) {
   const now = moment().tz("Asia/Bangkok");
@@ -252,93 +237,162 @@ async function contentWithAI(prompt) {
   return text_file_analysis;
 }
 
-// Function to calculate all notification dates based on repeat type and end date
+// =================================================================================================
+// DETAILED LOGGING ADDED TO THIS FUNCTION
+// =================================================================================================
 const calculateNotificationDates = (startDate, time, repeat, endDate) => {
+  console.log(`[DEBUG] --------------------------------------------------`);
+  console.log(`[DEBUG] 🔍 ENTERING calculateNotificationDates`);
+  console.log(`[DEBUG] --------------------------------------------------`);
+  console.log(`[DEBUG] |--> Initial Parameters Received:`);
+  console.log(`[DEBUG] |    - startDate: ${startDate} (Type: ${typeof startDate})`);
+  console.log(`[DEBUG] |    - time:      ${time} (Type: ${typeof time})`);
+  console.log(`[DEBUG] |    - repeat:    ${repeat} (Type: ${typeof repeat})`);
+  console.log(`[DEBUG] |    - endDate:   ${endDate} (Type: ${typeof endDate})`);
+
   const dates = [];
-  // FIX: Handle Thai Buddhist year (B.E.) to Gregorian year (A.D.) conversion
   const startYear = parseInt(startDate.substring(0, 4), 10);
   const gregorianYear = startYear > 2500 ? startYear - 543 : startYear;
   const gregorianStartDate = `${gregorianYear}${startDate.substring(4)}`;
+  console.log(`[DEBUG] |--> Date Conversion: Converted Buddhist year start date to Gregorian: ${gregorianStartDate}`);
 
   let currentDate = moment.tz(`${gregorianStartDate}T${time}`, "Asia/Bangkok");
+  if (!currentDate.isValid()) {
+    console.error(`[DEBUG] |--> 🚨 INVALID MOMENT DATE CREATED! Check startDate and time format.`);
+    return [];
+  }
+  console.log(`[DEBUG] |--> Moment.js Object 'currentDate' created: ${currentDate.format()}`);
 
-  // FIX: Added a check for endDate being undefined
   const end = repeat === "Never" || !endDate
     ? currentDate.clone()
     : moment.tz(`${endDate}T23:59:59`, "Asia/Bangkok");
-
-  while (currentDate.isSameOrBefore(end)) {
-    dates.push(currentDate.toDate());
-    if (repeat === "Daily") currentDate.add(1, "day");
-    else if (repeat === "Weekly") currentDate.add(1, "week");
-    else if (repeat === "Monthly") currentDate.add(1, "month");
-    else break; // For 'Never' repeat type
+  if (!end.isValid()) {
+    console.error(`[DEBUG] |--> 🚨 INVALID MOMENT END DATE CREATED! Check endDate format.`);
+    return dates; // Return what we have so far
   }
+  console.log(`[DEBUG] |--> Moment.js Object 'end' created: ${end.format()}`);
+  console.log(`[DEBUG] --------------------------------------------------`);
+  console.log(`[DEBUG] 🔄 Starting Notification Calculation Loop...`);
+
+  let loopCount = 0;
+  while (currentDate.isSameOrBefore(end)) {
+    loopCount++;
+    console.log(`[DEBUG] |`);
+    console.log(`[DEBUG] |--- Loop Iteration #${loopCount} ---`);
+    console.log(`[DEBUG] |    Condition Met: ${currentDate.format()} is same or before ${end.format()}`);
+    dates.push(currentDate.toDate());
+    console.log(`[DEBUG] |    ✅ Pushed date to array. Array size is now: ${dates.length}`);
+
+    if (repeat === "Daily") {
+      console.log(`[DEBUG] |    Repeat is 'Daily'. Adding 1 day.`);
+      currentDate.add(1, "day");
+    } else if (repeat === "Weekly") {
+      console.log(`[DEBUG] |    Repeat is 'Weekly'. Adding 1 week.`);
+      currentDate.add(1, "week");
+    } else if (repeat === "Monthly") {
+      console.log(`[DEBUG] |    Repeat is 'Monthly'. Adding 1 month.`);
+      currentDate.add(1, "month");
+    } else if (repeat === "Yearly") {
+      console.log(`[DEBUG] |    Repeat is 'Yearly'. Adding 1 year.`);
+      currentDate.add(1, "year");
+    } else {
+      console.log(`[DEBUG] |    Repeat is '${repeat}'. No condition met. Breaking loop.`);
+      break;
+    }
+    console.log(`[DEBUG] |    New 'currentDate' for next loop: ${currentDate.format()}`);
+  }
+
+  if (loopCount === 0) {
+    console.log(`[DEBUG] |--> ⚠️ Loop condition 'currentDate.isSameOrBefore(end)' was false on the first check. Loop did not run.`);
+  }
+
+  console.log(`[DEBUG] --------------------------------------------------`);
+  console.log(`[DEBUG] ✅ Loop Finished. Total notifications generated: ${dates.length}`);
+  console.log(`[DEBUG] 🚀 EXITING calculateNotificationDates`);
+  console.log(`[DEBUG] --------------------------------------------------`);
   return dates;
 };
 
-// New server-side task creation function, adapted from page.js
+
+// =================================================================================================
+// DETAILED LOGGING ADDED TO THIS FUNCTION
+// =================================================================================================
 async function handleAddTaskServer(taskData, lineUserId, userName) {
-  console.log(`[${getTimestamp()}] 📝 Starting task creation for user: ${lineUserId}`);
+  console.log(`[DEBUG] ==================================================`);
+  console.log(`[DEBUG] 📥 ENTERING handleAddTaskServer`);
+  console.log(`[DEBUG] ==================================================`);
+  console.log(`[DEBUG] |--> Task data received for user ${lineUserId}:`);
+  console.log(JSON.stringify(taskData, null, 2));
+
   try {
-    // Step 1: Ensure a user document exists for the current user
     const userDocRef = db.collection("users").doc(lineUserId);
     await userDocRef.set({
       name: userName,
       lineUserId: lineUserId,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
-    console.log(`[${getTimestamp()}] ✅ User document ensured.`);
+    console.log(`[DEBUG] |--> User document ensured in Firestore.`);
 
-    // Step 2: Create the master task document within the user's subcollection
     const userTasksCollectionRef = userDocRef.collection("tasks");
     const masterTask = {
       title: taskData.title,
-      detail: taskData.detail || "", // Use empty string if not provided
+      detail: taskData.detail || "",
       repeatType: taskData.repeat,
       startDate: taskData.date,
-      endDate: taskData.endDate || taskData.date, // Use start date if end date is not provided
+      endDate: taskData.endDate || taskData.date,
       userId: lineUserId,
       userName: userName,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
-    // FIX: Use the add() method on the collection reference
     const docRef = await userTasksCollectionRef.add(masterTask);
     console.log(`[${getTimestamp()}] ✅ Parent task document created with ID: ${docRef.id}`);
+    console.log(`[DEBUG] |--> Master task data written to Firestore. Repeat type is '${masterTask.repeatType}'.`);
 
-    // Step 3: Calculate and create notifications as a subcollection
+    console.log(`[DEBUG] |--> 📞 Calling calculateNotificationDates with repeat='${taskData.repeat}' and endDate='${taskData.endDate}'...`);
     const notificationDates = calculateNotificationDates(
       taskData.date,
       taskData.time,
       taskData.repeat,
       taskData.endDate
     );
+    console.log(`[DEBUG] |--> 📬 Got ${notificationDates.length} dates back from calculateNotificationDates.`);
 
-    // Increment the notification counter by the number of dates
-    metricsDocRef.update({
-      notifications_expected: FieldValue.increment(notificationDates.length)
-    }).catch(error => console.error("Error updating metrics:", error));
+    if (notificationDates.length > 0) {
+        metricsDocRef.update({
+        notifications_expected: FieldValue.increment(notificationDates.length)
+        }).catch(error => console.error("Error updating metrics:", error));
 
-    // FIX: Get the collection reference directly from the document reference
-    const notificationsCollectionRef = docRef.collection("notifications");
-    for (const date of notificationDates) {
-      await notificationsCollectionRef.add({
-        notificationTime: Timestamp.fromDate(date),
-        status: "Upcoming",
-        notified: false,
-        userId: lineUserId,
-      });
+        const notificationsCollectionRef = docRef.collection("notifications");
+        const batch = db.batch();
+        notificationDates.forEach(date => {
+            const newNotifRef = notificationsCollectionRef.doc();
+            batch.set(newNotifRef, {
+                notificationTime: Timestamp.fromDate(date),
+                status: "Upcoming",
+                notified: false,
+                userId: lineUserId,
+            });
+        });
+        await batch.commit();
+        console.log(`[DEBUG] |--> Successfully committed a batch of ${notificationDates.length} notifications to Firestore.`);
+    } else {
+        console.log(`[DEBUG] |--> ⚠️ No notification dates were generated, so no notifications were written to the database.`);
     }
-    console.log(`[${getTimestamp()}] ✅ ${notificationDates.length} notification(s) created.`);
 
+    console.log(`[${getTimestamp()}] ✅ ${notificationDates.length} notification(s) created.`);
+    console.log(`[DEBUG] ==================================================`);
+    console.log(`[DEBUG] ✅ EXITING handleAddTaskServer (SUCCESS)`);
+    console.log(`[DEBUG] ==================================================`);
     return { success: true, taskId: docRef.id };
   } catch (error) {
     console.error(`[${getTimestamp()}] ❌ Failed to add task:`, error);
+    console.log(`[DEBUG] ==================================================`);
+    console.log(`[DEBUG] ❌ EXITING handleAddTaskServer (ERROR)`);
+    console.log(`[DEBUG] ==================================================`);
     return { success: false, error: error.message };
   }
 }
 
-// FIX: Corrected generalSearchWithAI function
 async function generalSearchWithAI(prompt) {
   const generalSearchPrompt = `
     Answer the following general knowledge question concisely .
@@ -350,7 +404,6 @@ async function generalSearchWithAI(prompt) {
     max_tokens: 200,
     temperature: 0,
   });
-  // FIX: Extract the text from the response object
   const aiAnswer = response.choices[0].message.content.trim();
   console.log(`[${getTimestamp()}] 🤖 AI answer general knowledge question: ${aiAnswer}`);
   return aiAnswer;
@@ -368,7 +421,6 @@ async function healthWithAI(prompt) {
     max_tokens: 200,
     temperature: 0,
   });
-  // FIX: Extract the text from the response object
   const aiAnswer = response.choices[0].message.content.trim();
   console.log(`[${getTimestamp()}] 🤖 AI answer health message: ${aiAnswer}`);
   return aiAnswer;
@@ -430,7 +482,6 @@ async function handlePostback(event) {
 }
 
 app.post("/webhook", (req, res) => {
-  // Increment the total messages received counter
   metricsDocRef.update({
     messages_received: FieldValue.increment(1)
   }).catch(error => console.error("Error updating messages_received metrics:", error));
@@ -447,12 +498,9 @@ app.post("/webhook", (req, res) => {
       if (event.type === "message" && event.message?.type === "text") {
         const messageText = event.message.text;
         if (!messageText.toLowerCase().startsWith("alin") && !messageText.startsWith("อลิน")) {
-          const replyMessage = { type: "text", text: `ได้รับข้อความ: ${messageText} 🤖\n\nใช้งานผ่านเว็บแอป: https://your-domain.com` };
-          await sendReplyMessage(event.replyToken, [replyMessage]);
           return;
         }
 
-        // Increment the counter for messages passed to AI
         metricsDocRef.update({
           messages_to_ai: FieldValue.increment(1)
         }).catch(error => console.error("Error updating messages_to_ai metrics:", error));
@@ -467,7 +515,6 @@ app.post("/webhook", (req, res) => {
 
         const intent = await classifyMessageWithAI(aiPrompt);
 
-        // Increment the counter for the specific intent
         const updateObject = {};
         updateObject[`intent_categorized_${intent}`] = FieldValue.increment(1);
         metricsDocRef.update(updateObject).catch(error => console.error("Error updating intent metrics:", error));
@@ -475,40 +522,48 @@ app.post("/webhook", (req, res) => {
         if (intent === 'create_task') {
           const aiOutputJson = await createTaskWithAI(aiPrompt);
           try {
-            // Fix: Strip markdown code block fences before parsing JSON
+            // =================================================================================================
+            // DETAILED LOGGING ADDED HERE
+            // =================================================================================================
+            console.log(`[DEBUG] #################################################`);
+            console.log(`[DEBUG] ### STARTING 'create_task' INTENT PROCESS ###`);
+            console.log(`[DEBUG] #################################################`);
+            console.log(`[DEBUG] 1. Raw JSON string from AI:\n${aiOutputJson}`);
+            
             const cleanJsonString = aiOutputJson.replace(/```json|```/g, '').trim();
             const aiTaskData = JSON.parse(cleanJsonString);
+            console.log(`[DEBUG] 2. Parsed aiTaskData object:`);
+            console.log(JSON.stringify(aiTaskData, null, 2));
 
-            // Map AI output to the expected task format
-            // Corrected code
             const repeatValue = aiTaskData.repeat;
+            console.log(`[DEBUG] 3. Extracted 'repeat' value from AI object: '${repeatValue}'`);
 
-            // Capitalize the first letter of the repeat value (e.g., "weekly" -> "Weekly")
             const formattedRepeat = repeatValue === 'once'
               ? 'Never'
               : repeatValue.charAt(0).toUpperCase() + repeatValue.slice(1);
+            console.log(`[DEBUG] 4. Formatted 'repeat' value for logic: '${formattedRepeat}'`);
 
             const taskDataToCreate = {
               title: aiTaskData.task,
               detail: "",
               date: aiTaskData.date,
               time: aiTaskData.time,
-              repeat: formattedRepeat, // Use the new formatted value here
+              repeat: formattedRepeat,
               endDate: aiTaskData.endDate || aiTaskData.date,
               color: "blue",
               status: "Upcoming",
             };
+            console.log(`[DEBUG] 5. Final 'taskDataToCreate' object before passing to server function:`);
+            console.log(JSON.stringify(taskDataToCreate, null, 2));
+            console.log(`[DEBUG]    CHECK -> Is endDate present and correct? -> ${taskDataToCreate.endDate}`);
+            console.log(`[DEBUG] #################################################`);
 
             const result = await handleAddTaskServer(taskDataToCreate, event.source.userId, event.source.displayName || "LINE User");
 
             if (result.success) {
-              // MODIFIED: Added date and time to the reply message, with weekday
               const taskDate = new Date(`${taskDataToCreate.date}T${taskDataToCreate.time}`);
               const formattedDateWithWeekday = taskDate.toLocaleDateString("th-TH", {
-                weekday: 'long',
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric'
+                weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
               });
               const replyMessage = {
                 type: "text",
@@ -526,7 +581,6 @@ app.post("/webhook", (req, res) => {
           }
         }
         else if (intent === 'summarize_task') {
-          // --- NEW SUMMARY LOGIC ---
           const aiResult = await summarizeDateRangeWithAI(aiPrompt);
 
           if (aiResult.error) {
@@ -599,7 +653,6 @@ app.post("/webhook", (req, res) => {
               });
 
               let dateString;
-              // MODIFIED: Conditionally add the time based on range_type
               if (aiResult.range_type === 1) {
                 const timePart = `${String(notificationDate.getHours()).padStart(2, '0')}:${String(notificationDate.getMinutes()).padStart(2, '0')}`;
                 dateString = `${formattedDate} เวลา ${timePart}`;
@@ -615,7 +668,6 @@ app.post("/webhook", (req, res) => {
 
           const replyMessage = { type: "text", text: message };
           await sendReplyMessage(event.replyToken, [replyMessage]);
-          // --- END OF NEW SUMMARY LOGIC ---
         }
 
         else if (intent === 'general_search') {
@@ -644,141 +696,81 @@ app.post("/webhook", (req, res) => {
 
 
       } else if (event.type === "postback") {
-
         await handlePostback(event);
-
       } else if (event.type === "follow") {
-
         console.log(`[${getTimestamp()}] 👋 User followed the bot: ${event.source?.userId}`);
-
       } else if (event.type === "unfollow") {
-
         console.log(`[${getTimestamp()}] 👋 User unfollowed the bot: ${event.source?.userId}`);
-
       } else {
-
         console.log(`[${getTimestamp()}] ℹ️ Unhandled event type: ${event.type}`);
         if (event.message) {
-
           console.log(`[${getTimestamp()}] 📄 Message type: ${event.message.type}`);
-
         }
-
       }
 
       console.log(`[${getTimestamp()}] ✅ Completed processing event ${index + 1}/${events.length}`);
 
     } catch (error) {
-
       console.error(`[${getTimestamp()}] ❌ Error processing event ${index + 1}/${events.length}:`, error);
-
       console.error(`[${getTimestamp()}] ❌ Event data:`, JSON.stringify(event, null, 2));
-
       console.error(`[${getTimestamp()}] ❌ Error stack:`, error.stack);
 
-
       if (event.replyToken) {
-
         try {
-
           const errorReply = { type: "text", text: "เกิดข้อผิดพลาดในการประมวลผล กรุณาลองใหม่อีกครั้ง" };
-
           await sendReplyMessage(event.replyToken, [errorReply]);
-
           console.log(`[${getTimestamp()}] 📤 Error notification sent to user`);
-
         } catch (replyError) {
-
           console.error(`[${getTimestamp()}] ❌ Failed to send error notification:`, replyError);
-
         }
-
       }
-
     }
-
   });
 
-
   console.log(`[${getTimestamp()}] 🏁 Finished processing all ${events.length} events`);
-
 });
 
 
 app.post("/test-complete-task", async (req, res) => {
-
   const { taskId, userId } = req.body;
-
   if (!taskId || !userId) {
-
     return res.status(400).json({ success: false, message: "taskId and userId are required", });
-
   }
-
   try {
-
     const result = await completeTask(taskId, userId);
-
     res.json(result);
-
   } catch (error) {
-
     res.status(500).json({ success: false, message: error.message, error: error.stack, });
-
   }
-
 });
 
 
 app.get("/task-status/:taskId", async (req, res) => {
-
   const { taskId } = req.params;
-
   try {
-
     const taskRef = db.collection("tasks").doc(taskId);
-
     const taskDoc = await taskRef.get();
-
     if (!taskDoc.exists) {
-
       return res.status(404).json({ exists: false, message: "Task not found", });
-
     }
-
     const taskData = taskDoc.data();
-
     res.json({
-
       exists: true, taskId: taskId, status: taskData.status, title: taskData.title, userId: taskData.userId,
-
       createdAt: taskData.createdAt?.toDate?.() || taskData.createdAt, completedAt: taskData.completedAt?.toDate?.() || taskData.completedAt,
-
       lastUpdated: taskData.lastUpdated?.toDate?.() || taskData.lastUpdated, completedFromLine: taskData.completedFromLine || false,
-
       previousStatus: taskData.previousStatus || null, repeat: taskData.repeat || "Never", repeatStopped: taskData.repeatStopped || false,
-
     });
-
   } catch (error) {
-
     res.status(500).json({ error: error.message, });
-
   }
-
 });
 
 
 app.get("/", (req, res) => {
-
   res.json({
-
     status: "running", message: "LINE Bot Webhook Server Running! 🚀", timestamp: getTimestamp(),
-
     endpoints: { webhook: "/webhook", health: "/", },
-
   });
-
 });
 
 
@@ -792,4 +784,5 @@ app.listen(port, () => {
   console.log(`[${getTimestamp()}] ❤️  Health check: http://localhost:${port}/health`);
   console.log(`[${getTimestamp()}] 🎯 Ready to handle task completion actions!`);
 });
+
 module.exports = app;
