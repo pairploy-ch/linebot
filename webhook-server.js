@@ -263,8 +263,8 @@ const calculateNotificationDates = (startDate, time, repeat, endDate) => {
   let currentDate = moment.tz(`${gregorianStartDate}T${time}`, "Asia/Bangkok");
 
   // FIX: Added a check for endDate being undefined
-  const end = repeat === "Never" || !endDate 
-    ? currentDate.clone() 
+  const end = repeat === "Never" || !endDate
+    ? currentDate.clone()
     : moment.tz(`${endDate}T23:59:59`, "Asia/Bangkok");
 
   while (currentDate.isSameOrBefore(end)) {
@@ -480,12 +480,20 @@ app.post("/webhook", (req, res) => {
             const aiTaskData = JSON.parse(cleanJsonString);
 
             // Map AI output to the expected task format
+            // Corrected code
+            const repeatValue = aiTaskData.repeat;
+
+            // Capitalize the first letter of the repeat value (e.g., "weekly" -> "Weekly")
+            const formattedRepeat = repeatValue === 'once'
+              ? 'Never'
+              : repeatValue.charAt(0).toUpperCase() + repeatValue.slice(1);
+
             const taskDataToCreate = {
               title: aiTaskData.task,
               detail: "",
               date: aiTaskData.date,
               time: aiTaskData.time,
-              repeat: aiTaskData.repeat === 'once' ? 'Never' : aiTaskData.repeat,
+              repeat: formattedRepeat, // Use the new formatted value here
               endDate: aiTaskData.endDate || aiTaskData.date,
               color: "blue",
               status: "Upcoming",
@@ -589,7 +597,7 @@ app.post("/webhook", (req, res) => {
                 day: 'numeric',
                 month: 'long',
               });
-              
+
               let dateString;
               // MODIFIED: Conditionally add the time based on range_type
               if (aiResult.range_type === 1) {
@@ -598,7 +606,7 @@ app.post("/webhook", (req, res) => {
               } else {
                 dateString = formattedDate;
               }
-              
+
               message += `${i + 1}. ${noti.parentTaskTitle} : ${dateString}\n`;
             });
           } else {
