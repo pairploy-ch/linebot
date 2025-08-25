@@ -3,7 +3,7 @@ const admin = require("firebase-admin");
 const moment = require("moment-timezone");
 const openai = require("openai");
 const { default: fetch } = require("node-fetch");
-const { Timestamp } = require('firebase-admin/firestore');
+const { Timestamp, FieldValue } = require('firebase-admin/firestore');
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -31,6 +31,9 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const openaiClient = new openai.OpenAI({
   apiKey: OPENAI_API_KEY
 });
+
+// Reference to the metrics document for counters
+const metricsDocRef = db.collection('metrics').doc('summary');
 
 // Configure Express middleware
 app.use((req, res, next) => {
@@ -309,6 +312,11 @@ async function handleAddTaskServer(taskData, lineUserId, userName) {
       taskData.endDate
     );
 
+    // Increment the notification counter by the number of dates
+    metricsDocRef.update({
+      notifications_expected: FieldValue.increment(notificationDates.length)
+    }).catch(error => console.error("Error updating metrics:", error));
+
     // FIX: Get the collection reference directly from the document reference
     const notificationsCollectionRef = docRef.collection("notifications");
     for (const date of notificationDates) {
@@ -420,6 +428,11 @@ async function handlePostback(event) {
 }
 
 app.post("/webhook", (req, res) => {
+  // Increment the total messages received counter
+  metricsDocRef.update({
+    messages_received: FieldValue.increment(1)
+  }).catch(error => console.error("Error updating messages_received metrics:", error));
+
   const receivedTime = getTimestamp();
   console.log(`[${receivedTime}] 📩 Webhook received!`);
   res.status(200).send("OK");
@@ -437,6 +450,11 @@ app.post("/webhook", (req, res) => {
           return;
         }
 
+        // Increment the counter for messages passed to AI
+        metricsDocRef.update({
+          messages_to_ai: FieldValue.increment(1)
+        }).catch(error => console.error("Error updating messages_to_ai metrics:", error));
+
         const aiPrompt = messageText.substring(messageText.indexOf(" ") + 1);
         const characterThreshold = 500;
         if (aiPrompt.length > characterThreshold) {
@@ -446,6 +464,11 @@ app.post("/webhook", (req, res) => {
         }
 
         const intent = await classifyMessageWithAI(aiPrompt);
+
+        // Increment the counter for the specific intent
+        const updateObject = {};
+        updateObject[`intent_categorized_${intent}`] = FieldValue.increment(1);
+        metricsDocRef.update(updateObject).catch(error => console.error("Error updating intent metrics:", error));
 
         if (intent === 'create_task') {
           const aiOutputJson = await createTaskWithAI(aiPrompt);
@@ -605,7 +628,7 @@ app.post("/webhook", (req, res) => {
 
 
         else {
-          const replyMessage = { type: "text", text: "Alin ขอโทษค่ะ Alin ไม่สามารถเข้าใจคำสั่งนี้ได้ รบกวนพิมพ์มาใหม่อีกรอบนะคะ" };
+          const replyMessage = { type: "text", text: "Alin ขอโทษค่ะ Alin ไม่สามารถเข้าใจคำสั่งนี้ได้ รบwกวนพิมพ์มาใหม่อีกรอบนะคะ" };
           await sendReplyMessage(event.replyToken, [replyMessage]);
         }
 
