@@ -238,6 +238,140 @@ async function contentWithAI(prompt) {
 }
 
 // =================================================================================================
+// ✨ NEW FUNCTION TO CREATE A FLEX MESSAGE FOR TASK CREATION CONFIRMATION
+// =================================================================================================
+function createTaskConfirmationFlexMessage(task) {
+  const messageDate = moment.tz(`${task.date}T${task.time}`, 'Asia/Bangkok');
+  const dateDisplay = messageDate.isValid()
+    ? messageDate.format('DD/MM/YYYY HH:mm น.')
+    : 'ไม่ระบุเวลา';
+  const liffUrl = "https://liff.line.me/2007809557-PQXApdR3";
+
+  return {
+    type: "flex",
+    altText: `✅ สร้างแจ้งเตือน: ${task.title}`,
+    contents: {
+      type: "bubble",
+      size: "kilo",
+      header: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          {
+            type: "text",
+            text: "✅ Task Created",
+            weight: "bold",
+            color: "#ffffff",
+            size: "lg",
+            align: "center"
+          }
+        ],
+        backgroundColor: "#10b981",
+        paddingAll: "20px"
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          {
+            type: "text",
+            text: task.title,
+            weight: "bold",
+            size: "xl",
+            color: "#1f2937",
+            wrap: true,
+            margin: "none"
+          },
+          {
+            type: "text",
+            text: task.detail || "ไม่มีรายละเอียด",
+            size: "md",
+            color: "#6b7280",
+            wrap: true,
+            margin: "md"
+          },
+          {
+            type: "separator",
+            margin: "lg"
+          },
+          {
+            type: "box",
+            layout: "vertical",
+            contents: [
+              {
+                type: "box",
+                layout: "horizontal",
+                contents: [
+                  {
+                    type: "text",
+                    text: "🕐",
+                    size: "sm",
+                    color: "#6b7280",
+                    flex: 0
+                  },
+                  {
+                    type: "text",
+                    text: `First one at: ${dateDisplay}`,
+                    size: "sm",
+                    color: "#6b7280",
+                    flex: 1,
+                    margin: "sm"
+                  }
+                ]
+              },
+              {
+                type: "box",
+                layout: "horizontal",
+                contents: [
+                  {
+                    type: "text",
+                    text: "🔄",
+                    size: "sm",
+                    color: "#6b7280",
+                    flex: 0
+                  },
+                  {
+                    type: "text",
+                    text: `Repeat: ${task.repeat || 'Never'}`,
+                    size: "sm",
+                    color: "#6b7280",
+                    flex: 1,
+                    margin: "sm"
+                  }
+                ]
+              }
+            ],
+            margin: "lg",
+            spacing: "sm"
+          }
+        ],
+        paddingAll: "20px"
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          {
+            type: "button",
+            style: "primary",
+            height: "sm",
+            action: {
+              type: "uri",
+              label: "View All Tasks",
+              uri: liffUrl,
+            },
+            color: "#3b82f6"
+          }
+        ],
+        spacing: "sm",
+        paddingAll: "20px"
+      }
+    }
+  };
+}
+
+
+// =================================================================================================
 // DETAILED LOGGING ADDED TO THIS FUNCTION
 // =================================================================================================
 const calculateNotificationDates = (startDate, time, repeat, endDate) => {
@@ -561,6 +695,7 @@ app.post("/webhook", (req, res) => {
             const result = await handleAddTaskServer(taskDataToCreate, event.source.userId, event.source.displayName || "LINE User");
 
             if (result.success) {
+              /* --- OLD TEXT REPLY (COMMENTED OUT AS REQUESTED) ---
               const taskDate = new Date(`${taskDataToCreate.date}T${taskDataToCreate.time}`);
               const formattedDateWithWeekday = taskDate.toLocaleDateString("th-TH", {
                 weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
@@ -570,6 +705,12 @@ app.post("/webhook", (req, res) => {
                 text: `สร้างการแจ้งเตือน "${taskDataToCreate.title}"  ${formattedDateWithWeekday} เวลา ${taskDataToCreate.time}.`
               };
               await sendReplyMessage(event.replyToken, [replyMessage]);
+              */
+
+              // +++ NEW FLEX MESSAGE REPLY +++
+              const flexMessage = createTaskConfirmationFlexMessage(taskDataToCreate);
+              await sendReplyMessage(event.replyToken, [flexMessage]);
+
             } else {
               const replyMessage = { type: "text", text: "❌ Failed to create task. Please try again." };
               await sendReplyMessage(event.replyToken, [replyMessage]);
