@@ -25,6 +25,9 @@ const LINE_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const CRON_SCHEDULE_DAILY = process.env.CRON_SCHEDULE_DAILY || '0 10 * * *'; // Default to 10:00 AM
 const CRON_SCHEDULE_WARNING = process.env.CRON_SCHEDULE_WARNING || '0 18 * * *'; // Default to 6:00 PM
 
+// +++ ADDED: Reference to the metrics document for counters +++
+const metricsDocRef = db.collection('metrics').doc('summary');
+
 function getCurrentThaiTime() {
   return moment.tz('Asia/Bangkok');
 }
@@ -272,6 +275,14 @@ async function checkNotifications() {
       }
     }
     await batch.commit();
+
+    // +++ ADDED: Update schedule_sent metric +++
+    if (messagesToSend.length > 0) {
+      metricsDocRef.update({
+        schedule_sent: admin.firestore.FieldValue.increment(messagesToSend.length)
+      }).catch(error => console.error("Error updating schedule_sent metrics:", error));
+    }
+
     for (const messageObj of messagesToSend) {
       await sendFlexMessage(messageObj.userId, messageObj.message);
     }
@@ -363,9 +374,15 @@ async function sendDailySummaryNotifications() {
 
     const notificationsSnapshot = await notificationsQuery.get();
 
+    // MODIFIED: This block now handles all users, with or without tasks
     if (notificationsSnapshot.empty) {
-      console.log(`[${getTimestamp()}] 📋 No notifications found for today.`);
-      await handleUsersWithNoTasks(new Set());
+      console.log(`[${getTimestamp()}] 📋 No notifications found for today. Checking for active users with no tasks.`);
+      const summariesSent = await handleUsersWithNoTasks(new Set());
+      if (summariesSent > 0) {
+        metricsDocRef.update({
+          summary_sent: admin.firestore.FieldValue.increment(summariesSent)
+        }).catch(error => console.error("Error updating summary_sent metrics:", error));
+      }
       console.log(`[${getTimestamp()}] ✅ Daily summary check finished.`);
       return;
     }
@@ -395,16 +412,33 @@ async function sendDailySummaryNotifications() {
       await sendLineTextMessage(userId, summaryMessage);
     });
     await Promise.all(messagePromises);
-    console.log(`[${getTimestamp()}] ✅ Sent daily summaries to ${Object.keys(userTasks).length} user(s).`);
-    await handleUsersWithNoTasks(processedUserIds);
+
+    // +++ ADDED: Update summary_sent metric for users with tasks +++
+    const summariesWithTasksSent = Object.keys(userTasks).length;
+    if (summariesWithTasksSent > 0) {
+      metricsDocRef.update({
+        summary_sent: admin.firestore.FieldValue.increment(summariesWithTasksSent)
+      }).catch(error => console.error("Error updating summary_sent metrics:", error));
+    }
+    console.log(`[${getTimestamp()}] ✅ Sent daily summaries to ${summariesWithTasksSent} user(s).`);
+
+    // +++ ADDED: Update summary_sent metric for users without tasks +++
+    const summariesWithoutTasksSent = await handleUsersWithNoTasks(processedUserIds);
+    if (summariesWithoutTasksSent > 0) {
+      metricsDocRef.update({
+        summary_sent: admin.firestore.FieldValue.increment(summariesWithoutTasksSent)
+      }).catch(error => console.error("Error updating summary_sent metrics:", error));
+    }
     console.log(`[${getTimestamp()}] ✅ Daily summary notification process completed.`);
   } catch (error) {
     console.error(`[${getTimestamp()}] ❌ Error in sendDailySummaryNotifications:`, error);
   }
 }
 
+// MODIFIED: This function now returns the count of messages sent
 async function handleUsersWithNoTasks(usersWithTasks = new Set()) {
   console.log(`[${getTimestamp()}] 🔄 Checking for users with no tasks today...`);
+  let messagesSentCount = 0;
   const usersRef = db.collection('users');
   const usersSnapshot = await usersRef.get();
   const noTaskMessage = createNoTaskTextMessage();
@@ -416,10 +450,12 @@ async function handleUsersWithNoTasks(usersWithTasks = new Set()) {
       if (!userHasAnyNotificationsSnapshot.empty) {
         console.log(`[${getTimestamp()}] 💌 Sending 'no tasks today' message to user: ${userId}`);
         await sendLineTextMessage(userId, noTaskMessage);
+        messagesSentCount++;
       }
     }
   }
   console.log(`[${getTimestamp()}] ✅ Finished checking for users with no tasks.`);
+  return messagesSentCount;
 }
 
 async function sendDailyWarningNotifications() {
@@ -439,7 +475,12 @@ async function sendDailyWarningNotifications() {
 
     if (notificationsSnapshot.empty) {
       console.log(`[${getTimestamp()}] 📋 No Incomplete Job found for today.`);
-      await handleUsersWithNoWarning(new Set());
+      const warningsSent = await handleUsersWithNoWarning(new Set());
+      if (warningsSent > 0) {
+        metricsDocRef.update({
+          warning_sent: admin.firestore.FieldValue.increment(warningsSent)
+        }).catch(error => console.error("Error updating warning_sent metrics:", error));
+      }
       console.log(`[${getTimestamp()}] ✅ Daily Warning check finished.`);
       return;
     }
@@ -469,16 +510,33 @@ async function sendDailyWarningNotifications() {
       await sendLineTextMessage(userId, summaryMessage);
     });
     await Promise.all(messagePromises);
-    console.log(`[${getTimestamp()}] ✅ Sent daily warnings to ${Object.keys(userTasks).length} user(s).`);
-    await handleUsersWithNoWarning(processedUserIds);
+
+    // +++ ADDED: Update warning_sent metric for users with tasks +++
+    const warningsWithTasksSent = Object.keys(userTasks).length;
+    if (warningsWithTasksSent > 0) {
+      metricsDocRef.update({
+        warning_sent: admin.firestore.FieldValue.increment(warningsWithTasksSent)
+      }).catch(error => console.error("Error updating warning_sent metrics:", error));
+    }
+    console.log(`[${getTimestamp()}] ✅ Sent daily warnings to ${warningsWithTasksSent} user(s).`);
+
+    // +++ ADDED: Update warning_sent metric for users without tasks +++
+    const warningsWithoutTasksSent = await handleUsersWithNoWarning(processedUserIds);
+    if (warningsWithoutTasksSent > 0) {
+      metricsDocRef.update({
+        warning_sent: admin.firestore.FieldValue.increment(warningsWithoutTasksSent)
+      }).catch(error => console.error("Error updating warning_sent metrics:", error));
+    }
     console.log(`[${getTimestamp()}] ✅ Daily warning notification process completed.`);
   } catch (error) {
     console.error(`[${getTimestamp()}] ❌ Error in sendDailySummaryNotifications:`, error);
   }
 }
 
+// MODIFIED: This function now returns the count of messages sent
 async function handleUsersWithNoWarning(usersWithTasks = new Set()) {
   console.log(`[${getTimestamp()}] 🔄 Checking for users with no incomplete today...`);
+  let messagesSentCount = 0;
   const usersRef = db.collection('users');
   const usersSnapshot = await usersRef.get();
   const noIncompleteTaskMessage = createNoIncompleteTaskTextMessage();
@@ -490,10 +548,12 @@ async function handleUsersWithNoWarning(usersWithTasks = new Set()) {
       if (!userHasAnyNotificationsSnapshot.empty) {
         console.log(`[${getTimestamp()}] 💌 Sending 'no incomplete tasks today' message to user: ${userId}`);
         await sendLineTextMessage(userId, noIncompleteTaskMessage);
+        messagesSentCount++;
       }
     }
   }
   console.log(`[${getTimestamp()}] ✅ Finished checking for users with no warnings.`);
+  return messagesSentCount;
 }
 
 // ------------------------------------------------
