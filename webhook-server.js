@@ -57,6 +57,35 @@ function getTimestamp() {
   });
 }
 
+// =================================================================================================
+// ✨ NEW FUNCTION TO SHOW LOADING INDICATOR IN CHAT
+// =================================================================================================
+async function startLoadingAnimation(userId, durationInSeconds = 10) {
+  console.log(`[${getTimestamp()}] ⏳ Starting loading animation for user: ${userId}`);
+  try {
+    const fetch = (await import("node-fetch")).default;
+    const response = await fetch("https://api.line.me/v2/bot/chat/loading/start", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${LINE_ACCESS_TOKEN}`,
+      },
+      body: JSON.stringify({
+        chatId: userId,
+        loadingSeconds: durationInSeconds,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.log(`[${getTimestamp()}] ❌ Failed to start loading animation:`, errorText);
+    }
+  } catch (error) {
+    console.error(`[${getTimestamp()}] ❌ Error in startLoadingAnimation:`, error);
+  }
+}
+
+
 async function sendReplyMessage(replyToken, messages) {
   try {
     const fetch = (await import("node-fetch")).default;
@@ -238,16 +267,13 @@ async function contentWithAI(prompt) {
 }
 
 // =================================================================================================
-// ✨ MODIFIED FUNCTION TO CREATE A SIMPLIFIED FLEX MESSAGE
+// ✨ NEW FUNCTION TO CREATE A FLEX MESSAGE FOR TASK CREATION CONFIRMATION
 // =================================================================================================
 function createTaskConfirmationFlexMessage(task) {
   const messageDate = moment.tz(`${task.date}T${task.time}`, 'Asia/Bangkok');
-  
-  // Set locale to Thai for month names
-  const dateDisplay = messageDate.locale('th').format('D MMMM YYYY');
-  const timeDisplay = messageDate.format('HH:mm น.');
-
-  const confirmationText = `สร้างการแจ้งเตือน "${task.title}" แล้ว สำหรับวันที่ ${dateDisplay} เวลา ${timeDisplay}`;
+  const dateDisplay = messageDate.isValid()
+    ? messageDate.format('DD/MM/YYYY HH:mm น.')
+    : 'ไม่ระบุเวลา';
   const liffUrl = "https://liff.line.me/2007809557-PQXApdR3";
 
   return {
@@ -255,7 +281,7 @@ function createTaskConfirmationFlexMessage(task) {
     altText: `✅ สร้างแจ้งเตือน: ${task.title}`,
     contents: {
       type: "bubble",
-      size: "giga", // Use giga for more space
+      size: "kilo",
       header: {
         type: "box",
         layout: "vertical",
@@ -278,10 +304,74 @@ function createTaskConfirmationFlexMessage(task) {
         contents: [
           {
             type: "text",
-            text: confirmationText,
+            text: task.title,
+            weight: "bold",
+            size: "xl",
+            color: "#1f2937",
             wrap: true,
+            margin: "none"
+          },
+          {
+            type: "text",
+            text: task.detail || "ไม่มีรายละเอียด",
             size: "md",
-            color: "#1f2937"
+            color: "#6b7280",
+            wrap: true,
+            margin: "md"
+          },
+          {
+            type: "separator",
+            margin: "lg"
+          },
+          {
+            type: "box",
+            layout: "vertical",
+            contents: [
+              {
+                type: "box",
+                layout: "horizontal",
+                contents: [
+                  {
+                    type: "text",
+                    text: "🕐",
+                    size: "sm",
+                    color: "#6b7280",
+                    flex: 0
+                  },
+                  {
+                    type: "text",
+                    text: `First one at: ${dateDisplay}`,
+                    size: "sm",
+                    color: "#6b7280",
+                    flex: 1,
+                    margin: "sm"
+                  }
+                ]
+              },
+              {
+                type: "box",
+                layout: "horizontal",
+                contents: [
+                  {
+                    type: "text",
+                    text: "🔄",
+                    size: "sm",
+                    color: "#6b7280",
+                    flex: 0
+                  },
+                  {
+                    type: "text",
+                    text: `Repeat: ${task.repeat || 'Never'}`,
+                    size: "sm",
+                    color: "#6b7280",
+                    flex: 1,
+                    margin: "sm"
+                  }
+                ]
+              }
+            ],
+            margin: "lg",
+            spacing: "sm"
           }
         ],
         paddingAll: "20px"
@@ -569,6 +659,14 @@ app.post("/webhook", (req, res) => {
   events.forEach(async (event, index) => {
     try {
       if (event.type === "message" && event.message?.type === "text") {
+        
+        // =================================================================================================
+        // ✨ TRIGGER LOADING ANIMATION HERE
+        // =================================================================================================
+        if (event.source?.userId) {
+            await startLoadingAnimation(event.source.userId, 10); // Show animation for 10 seconds
+        }
+
         const messageText = event.message.text;
         if (!messageText.toLowerCase().startsWith("alin") && !messageText.startsWith("อลิน")) {
           return;
