@@ -660,17 +660,25 @@ app.post("/webhook", (req, res) => {
     try {
       if (event.type === "message" && event.message?.type === "text") {
         
-        // =================================================================================================
-        // ✨ TRIGGER LOADING ANIMATION HERE
-        // =================================================================================================
         if (event.source?.userId) {
-            await startLoadingAnimation(event.source.userId, 10); // Show animation for 10 seconds
+            await startLoadingAnimation(event.source.userId, 10);
         }
 
         const messageText = event.message.text;
+
+        // =================================================================================================
+        // ✨ MODIFICATION: REPLY TO USER IF KEYWORD IS MISSING
+        // =================================================================================================
         if (!messageText.toLowerCase().startsWith("alin") && !messageText.startsWith("อลิน")) {
-          return;
+          const replyMessage = {
+            type: "text",
+            text: "สวัสดีค่ะ กรุณาขึ้นต้นข้อความด้วย 'Alin' หรือ 'อลิน' เพื่อให้ฉันเริ่มทำงานนะคะ 😊"
+          };
+          await sendReplyMessage(event.replyToken, [replyMessage]);
+          return; // Stop processing this event
         }
+        // =================================================================================================
+        
 
         metricsDocRef.update({
           messages_to_ai: FieldValue.increment(1)
@@ -693,9 +701,6 @@ app.post("/webhook", (req, res) => {
         if (intent === 'create_task') {
           const aiOutputJson = await createTaskWithAI(aiPrompt);
           try {
-            // =================================================================================================
-            // DETAILED LOGGING ADDED HERE
-            // =================================================================================================
             console.log(`[DEBUG] #################################################`);
             console.log(`[DEBUG] ### STARTING 'create_task' INTENT PROCESS ###`);
             console.log(`[DEBUG] #################################################`);
@@ -732,19 +737,6 @@ app.post("/webhook", (req, res) => {
             const result = await handleAddTaskServer(taskDataToCreate, event.source.userId, event.source.displayName || "LINE User");
 
             if (result.success) {
-              /* --- OLD TEXT REPLY (COMMENTED OUT AS REQUESTED) ---
-              const taskDate = new Date(`${taskDataToCreate.date}T${taskDataToCreate.time}`);
-              const formattedDateWithWeekday = taskDate.toLocaleDateString("th-TH", {
-                weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-              });
-              const replyMessage = {
-                type: "text",
-                text: `สร้างการแจ้งเตือน "${taskDataToCreate.title}"  ${formattedDateWithWeekday} เวลา ${taskDataToCreate.time}.`
-              };
-              await sendReplyMessage(event.replyToken, [replyMessage]);
-              */
-
-              // +++ NEW FLEX MESSAGE REPLY +++
               const flexMessage = createTaskConfirmationFlexMessage(taskDataToCreate);
               await sendReplyMessage(event.replyToken, [flexMessage]);
 
