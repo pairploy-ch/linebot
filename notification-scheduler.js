@@ -43,6 +43,8 @@ function createTaskFlexMessage(task) {
     ? messageDate.format('DD/MM/YYYY HH:mm น.')
     : 'ไม่ระบุเวลา';
 
+  const liffUrl = "https://liff.line.me/2007809557-PQXApdR3";
+
   return {
     type: "flex",
     altText: `🔔 แจ้งเตือน: ${task.title}`,
@@ -55,7 +57,7 @@ function createTaskFlexMessage(task) {
         contents: [
           {
             type: "text",
-            text: "🔔 Notification",
+            text: "🔔 Notificationsss",
             weight: "bold",
             color: "#ffffff",
             size: "lg",
@@ -153,12 +155,11 @@ function createTaskFlexMessage(task) {
             height: "sm",
             flex: 1,
             action: {
-              type: "postback",
-              label: "เลื่อน 10 นาที",
-              data: `snooze_user_${task.userId}_task_${task.parentId}_notification_${task.id}_m_10`,
-              displayText: "ขอเลื่อนไปอีก 10 นาที"
+              type: "uri",
+              label: "View Task",
+              uri: liffUrl,
             },
-            color: "#f3f4f6"
+            color: "#eeeeee"
           },
           {
             type: "button",
@@ -180,7 +181,6 @@ function createTaskFlexMessage(task) {
     }
   };
 }
-
 
 async function sendFlexMessage(userId, message) {
   const timestamp = getTimestamp();
@@ -212,33 +212,24 @@ async function sendFlexMessage(userId, message) {
   }
 }
 
-/**
- * Checks for due notifications and sends them.
- * FIXED: This is now the single source of truth for the minute-by-minute check.
- * - It queries ONLY by `nextAt` within a 1-minute window.
- * - Corrected the object spread syntax for creating the Flex Message payload.
- */
 async function checkNotifications() {
   const now = moment.tz('Asia/Bangkok');
-  // Define a 1-minute window to prevent missing notifications due to small timing discrepancies.
-  const WINDOW_MS = 60 * 1000; 
-  const windowStart = now.clone().subtract(WINDOW_MS, 'milliseconds');
-
+  const fiveMinutesAgo = now.clone().subtract(5, 'minutes');
   console.log(`\n[${getTimestamp()}] ⏰ 🔄 CRON JOB TRIGGERED - Running scheduled notification check...`);
-  console.log(`[${getTimestamp()}] 🔍 Looking for notifications with nextAt between ${windowStart.format()} and ${now.format()}`);
+  console.log(`[${getTimestamp()}] 🔍 Looking for notifications due between ${fiveMinutesAgo.format()} and ${now.format()}`);
 
   try {
     const notificationsRef = db.collectionGroup('notifications');
     const notificationsQuery = notificationsRef
       .where('notified', '==', false)
-      .where('nextAt', '>=', admin.firestore.Timestamp.fromDate(windowStart.toDate()))
-      .where('nextAt', '<=', admin.firestore.Timestamp.fromDate(now.toDate()));
+      .where('notificationTime', '>=', admin.firestore.Timestamp.fromDate(fiveMinutesAgo.toDate()))
+      .where('notificationTime', '<=', admin.firestore.Timestamp.fromDate(now.toDate()));
 
     console.log(`[${getTimestamp()}] ⚙️ Query details for minute check:`);
     console.log(`[${getTimestamp()}]  - Collection Group: 'notifications'`);
     console.log(`[${getTimestamp()}]  - Filter 1: notified == false`);
-    console.log(`[${getTimestamp()}]  - Filter 2: nextAt >= ${windowStart.toISOString()}`);
-    console.log(`[${getTimestamp()}]  - Filter 3: nextAt <= ${now.toISOString()}`);
+    console.log(`[${getTimestamp()}]  - Filter 2: notificationTime >= ${fiveMinutesAgo.toISOString()}`);
+    console.log(`[${getTimestamp()}]  - Filter 3: notificationTime <= ${now.toISOString()}`);
 
     const notificationsSnapshot = await notificationsQuery.get();
 
@@ -256,29 +247,27 @@ async function checkNotifications() {
       const parentTaskDoc = await parentTaskRef.get();
       if (parentTaskDoc.exists) {
         const parentTaskData = parentTaskDoc.data();
-        
-        // FIXED: Correctly merge objects using spread syntax
-        const flexMessage = createTaskFlexMessage({
+        const notificationTimeMoment = moment(notificationData.notificationTime.toDate());
+        if (notificationTimeMoment.isSameOrBefore(now)) {
+          const flexMessage = createTaskFlexMessage({
             ...parentTaskData,
             ...notificationData,
             id: notificationDoc.id,
             parentId: parentTaskDoc.id,
             userId: parentTaskData.userId,
-        });
-        messagesToSend.push({
+          });
+          messagesToSend.push({
             userId: parentTaskData.userId,
             message: flexMessage
-        });
-
-        // Mark as notified and set status to Incomplete
-        batch.update(notificationDoc.ref, {
+          });
+          batch.update(notificationDoc.ref, {
             notified: true,
             status: 'Incomplete',
             sentAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        if (parentTaskData.repeatType === 'Never') {
+          });
+          if (parentTaskData.repeatType === 'Never' || notificationTimeMoment.isSame(moment(parentTaskData.endDate).tz('Asia/Bangkok'), 'day')) {
             batch.update(parentTaskRef, { status: 'Incomplete' });
+          }
         }
       }
     }
@@ -291,7 +280,6 @@ async function checkNotifications() {
     console.error(`[${getTimestamp()}] ❌ Error in checkNotifications:`, error);
   }
 }
-
 
 // ------------------------------------------------
 // Functions for the daily summary cron job

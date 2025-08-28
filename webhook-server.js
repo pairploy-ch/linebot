@@ -57,6 +57,9 @@ function getTimestamp() {
   });
 }
 
+// =================================================================================================
+// ✨ NEW FUNCTION TO SHOW LOADING INDICATOR IN CHAT
+// =================================================================================================
 async function startLoadingAnimation(userId, durationInSeconds = 10) {
   console.log(`[${getTimestamp()}] ⏳ Starting loading animation for user: ${userId}`);
   try {
@@ -263,6 +266,9 @@ async function contentWithAI(prompt) {
   return text_file_analysis;
 }
 
+// =================================================================================================
+// ✨ NEW FUNCTION TO CREATE A FLEX MESSAGE FOR TASK CREATION CONFIRMATION
+// =================================================================================================
 function createTaskConfirmationFlexMessage(task) {
   const messageDate = moment.tz(`${task.date}T${task.time}`, 'Asia/Bangkok');
   const dateDisplay = messageDate.isValid()
@@ -393,6 +399,10 @@ function createTaskConfirmationFlexMessage(task) {
   };
 }
 
+
+// =================================================================================================
+// DETAILED LOGGING ADDED TO THIS FUNCTION
+// =================================================================================================
 const calculateNotificationDates = (startDate, time, repeat, endDate) => {
   console.log(`[DEBUG] --------------------------------------------------`);
   console.log(`[DEBUG] 🔍 ENTERING calculateNotificationDates`);
@@ -466,6 +476,10 @@ const calculateNotificationDates = (startDate, time, repeat, endDate) => {
   return dates;
 };
 
+
+// =================================================================================================
+// DETAILED LOGGING ADDED TO THIS FUNCTION
+// =================================================================================================
 async function handleAddTaskServer(taskData, lineUserId, userName) {
   console.log(`[DEBUG] ==================================================`);
   console.log(`[DEBUG] 📥 ENTERING handleAddTaskServer`);
@@ -515,10 +529,8 @@ async function handleAddTaskServer(taskData, lineUserId, userName) {
         const batch = db.batch();
         notificationDates.forEach(date => {
             const newNotifRef = notificationsCollectionRef.doc();
-            const notificationTimestamp = Timestamp.fromDate(date);
             batch.set(newNotifRef, {
-                notificationTime: notificationTimestamp,
-                nextAt: notificationTimestamp, // Set nextAt to the initial notification time
+                notificationTime: Timestamp.fromDate(date),
                 status: "Upcoming",
                 notified: false,
                 userId: lineUserId,
@@ -543,7 +555,6 @@ async function handleAddTaskServer(taskData, lineUserId, userName) {
     return { success: false, error: error.message };
   }
 }
-
 
 async function generalSearchWithAI(prompt) {
   const generalSearchPrompt = `
@@ -578,25 +589,17 @@ async function healthWithAI(prompt) {
   return aiAnswer;
 }
 
-/**
- * Handles incoming postback events from LINE.
- * FIXED: This is now the single, consolidated handler for all postback events.
- * The snooze logic is cleanly separated in an `else if` block.
- * @param {object} event - The LINE webhook event object.
- */
 async function handlePostback(event) {
   const data = event.postback?.data;
   const userId = event.source?.userId;
-  const replyToken = event.replyToken;
 
   if (!data || !userId) return;
 
-  // Handle "Complete Task" postback
   if (data.startsWith("complete_task_")) {
     const parts = data.split('_');
     if (parts.length < 8) {
       console.error(`[${getTimestamp()}] ❌ Invalid postback data format: ${data}`);
-      await sendReplyMessage(replyToken, [{ type: "text", text: "❌ เกิดข้อผิดพลาดในการประมวลผลข้อมูล กรุณาลองใหม่" }]);
+      await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ เกิดข้อผิดพลาดในการประมวลผลข้อมูล กรุณาลองใหม่" }]);
       return;
     }
     const parentTaskId = parts[5];
@@ -607,7 +610,7 @@ async function handlePostback(event) {
       const notificationDoc = await notificationRef.get();
 
       if (!notificationDoc.exists) {
-        await sendReplyMessage(replyToken, [{ type: "text", text: "❌ ไม่พบการแจ้งเตือนที่ระบุในระบบ" }]);
+        await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ ไม่พบการแจ้งเตือนที่ระบุในระบบ" }]);
         return;
       }
 
@@ -616,7 +619,7 @@ async function handlePostback(event) {
       const parentTaskData = parentTaskDoc.data();
 
       if (parentTaskData.userId !== userId) {
-        await sendReplyMessage(replyToken, [{ type: "text", text: "❌ คุณไม่มีสิทธิ์ในการอัปเดตงานนี้" }]);
+        await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ คุณไม่มีสิทธิ์ในการอัปเดตงานนี้" }]);
         return;
       }
 
@@ -627,7 +630,7 @@ async function handlePostback(event) {
 
       console.log(`[${getTimestamp()}] ✅ Notification "${parentTaskData.title}" for task "${parentTaskId}" marked as Completed`);
 
-      await sendReplyMessage(replyToken, [{
+      await sendReplyMessage(event.replyToken, [{
         type: "text",
         text: `งาน "${parentTaskData.title}" เสร็จสิ้นแล้ว`
       }]);
@@ -635,52 +638,11 @@ async function handlePostback(event) {
       console.log(`[${getTimestamp()}] 🔥 Postback complete_task processed for notification: ${notificationId}`);
     } catch (error) {
       console.error(`[${getTimestamp()}] ❌ Error processing complete_task:`, error);
-      await sendReplyMessage(replyToken, [{ type: "text", text: "❌ เกิดข้อผิดพลาดในการอัปเดตงาน กรุณาลองใหม่" }]);
-    }
-    return;
-  } 
-  // Handle "Snooze Task" postback
-  else if (data.startsWith("snooze_")) {
-    const parts = data.split('_');
-    // Example: snooze_user_<uid>_task_<parentTaskId>_notification_<notifId>_m_10
-    if (parts.length < 10) {
-        console.error(`[${getTimestamp()}] ❌ Invalid snooze postback data format: ${data}`);
-        await sendReplyMessage(replyToken, [{ type: "text", text: "❌ เกิดข้อผิดพลาดในการเลื่อนเวลา" }]);
-        return;
-    }
-    const parentTaskId = parts[5];
-    const notificationId = parts[7];
-    const snoozeMinutes = parseInt(parts[9], 10);
-
-    try {
-        const notificationRef = db.collection("users").doc(userId).collection("tasks").doc(parentTaskId).collection("notifications").doc(notificationId);
-        
-        // Calculate the new due time
-        const newDue = moment().tz('Asia/Bangkok').add(snoozeMinutes, 'minutes').toDate();
-        const newDueTimestamp = admin.firestore.Timestamp.fromDate(newDue);
-
-        // Update the notification document
-        await notificationRef.update({
-            nextAt: newDueTimestamp,
-            notified: false, // Reset notified flag so the cron job picks it up again
-            status: "Snoozed"
-        });
-
-        console.log(`[${getTimestamp()}] ⏰ Notification ${notificationId} snoozed for ${snoozeMinutes} minutes.`);
-
-        await sendReplyMessage(replyToken, [{
-            type: "text",
-            text: `เลื่อนไปอีก ${snoozeMinutes} นาทีแล้ว ⏰`
-        }]);
-
-    } catch (error) {
-        console.error(`[${getTimestamp()}] ❌ Error processing snooze_task:`, error);
-        await sendReplyMessage(replyToken, [{ type: "text", text: "❌ เกิดข้อผิดพลาดในการเลื่อนเวลา กรุณาลองใหม่" }]);
+      await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ เกิดข้อผิดพลาดในการอัปเดตงาน กรุณาลองใหม่" }]);
     }
     return;
   }
 }
-
 
 app.post("/webhook", (req, res) => {
   metricsDocRef.update({
@@ -704,15 +666,20 @@ app.post("/webhook", (req, res) => {
 
         const messageText = event.message.text;
 
+        // =================================================================================================
+        // ✨ MODIFICATION: REPLY TO USER IF KEYWORD IS MISSING
+        // =================================================================================================
         if (!messageText.toLowerCase().startsWith("alin") && !messageText.startsWith("อลิน")) {
           const replyMessage = {
             type: "text",
             text: "สวัสดีค่ะ กรุณาขึ้นต้นข้อความด้วย 'Alin' หรือ 'อลิน' เพื่อให้ฉันเริ่มทำงานนะคะ 😊"
           };
           await sendReplyMessage(event.replyToken, [replyMessage]);
-          return; 
+          return; // Stop processing this event
         }
+        // =================================================================================================
         
+
         metricsDocRef.update({
           messages_to_ai: FieldValue.increment(1)
         }).catch(error => console.error("Error updating messages_to_ai metrics:", error));
