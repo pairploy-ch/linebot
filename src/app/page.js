@@ -83,13 +83,15 @@ export default function TaskManager() {
   };
 
   const calculateNotificationDates = (startDate, time, repeat, endDate) => {
+    // Using Asia/Bangkok to be consistent with the backend
+    const timeZone = "Asia/Bangkok";
     if (repeat === "Never") {
-      return [moment.tz(`${startDate}T${time}`, "Asia/Singapore").toDate()];
+      return [moment.tz(`${startDate}T${time}`, timeZone).toDate()];
     }
 
     const dates = [];
-    let currentDate = moment.tz(`${startDate}T${time}`, "Asia/Singapore");
-    const end = moment.tz(`${endDate}T23:59:59`, "Asia/Singapore");
+    let currentDate = moment.tz(`${startDate}T${time}`, timeZone);
+    const end = moment.tz(`${endDate}T23:59:59`, timeZone);
 
     while (currentDate.isSameOrBefore(end)) {
       dates.push(currentDate.toDate());
@@ -111,6 +113,10 @@ export default function TaskManager() {
     return dates;
   };
 
+  /**
+   * Handles adding a new task from the UI.
+   * MODIFIED: Sets both `notificationTime` and `nextAt` when creating notifications.
+   */
   const handleAddTask = async () => {
     if (
       !session?.lineUserId ||
@@ -164,14 +170,20 @@ export default function TaskManager() {
       );
 
       const notificationsCollectionRef = collection(docRef, "notifications");
+      const batch = writeBatch(db);
       for (const date of notificationDates) {
-        await addDoc(notificationsCollectionRef, {
-          notificationTime: Timestamp.fromDate(date),
+        const newNotifRef = doc(notificationsCollectionRef);
+        const notificationTimestamp = Timestamp.fromDate(date);
+        batch.set(newNotifRef, {
+          notificationTime: notificationTimestamp,
+          nextAt: notificationTimestamp, // Set nextAt to the initial time
           status: "Upcoming",
           notified: false,
           userId: session.lineUserId,
         });
       }
+      await batch.commit();
+
 
       setCurrentView("home");
       setNewTask({
@@ -185,8 +197,6 @@ export default function TaskManager() {
         endDate: "",
       });
       
-      // Refresh tasks list
-      await fetchTasks();
       toast.success("Task and notifications added successfully!");
     } catch (error) {
       console.error("Failed to add task:", error);
@@ -260,8 +270,6 @@ export default function TaskManager() {
         )
       );
       
-      // Refresh tasks list
-      await fetchTasks();
       toast.success("ลบการแจ้งเตือนนี้สำเร็จ!");
     } catch (error) {
       console.error("ลบการแจ้งเตือนล้มเหลว:", error);
@@ -291,8 +299,6 @@ export default function TaskManager() {
       batch.delete(parentTaskRef);
       await batch.commit();
 
-      // Refresh tasks list
-      await fetchTasks();
       toast.success("ลบงานทั้งหมดสำเร็จแล้ว!");
     } catch (error) {
       console.error("ลบงานทั้งหมดล้มเหลว:", error);
@@ -327,8 +333,6 @@ export default function TaskManager() {
         status: "Completed",
       });
 
-      // Refresh tasks list
-      await fetchTasks();
       toast.success("Task completed successfully!");
       setCurrentView("home");
     } catch (error) {
@@ -342,9 +346,10 @@ export default function TaskManager() {
     let timeValue = "";
 
     if (task.notificationTime) {
-      const date = task.notificationTime.toDate();
-      dateValue = date.toISOString().split("T")[0];
-      timeValue = date.toTimeString().slice(0, 5);
+      // Use moment-timezone to correctly handle the time display in the UI
+      const date = moment(task.notificationTime.toDate()).tz("Asia/Bangkok");
+      dateValue = date.format("YYYY-MM-DD");
+      timeValue = date.format("HH:mm");
     }
 
     setEditingTask({
@@ -355,6 +360,11 @@ export default function TaskManager() {
     setCurrentView("editTask");
   };
 
+  /**
+   * Handles updating a task from the UI.
+   * MODIFIED: Updates both `notificationTime` and `nextAt` to keep them in sync
+   * when the user edits the scheduled time.
+   */
   const handleUpdateTask = async () => {
     if (!editingTask?.title.trim()) {
       toast.error("กรุณาใส่ชื่อ task");
@@ -379,24 +389,27 @@ export default function TaskManager() {
         editingTask.id
       );
 
+      // Update the parent task's title and detail
       await updateDoc(parentTaskRef, {
         title: editingTask.title,
         detail: editingTask.detail,
         updatedAt: Timestamp.now(),
       });
 
+      // Create the new timestamp for the notification
+      const newNotificationDate = moment.tz(`${editingTask.date}T${editingTask.time}`, "Asia/Bangkok").toDate();
+      const newNotificationTimestamp = Timestamp.fromDate(newNotificationDate);
+
+      // Update the specific notification, syncing both time fields
       await updateDoc(notificationRef, {
-        notificationTime: Timestamp.fromDate(
-          new Date(`${editingTask.date}T${editingTask.time}`)
-        ),
+        notificationTime: newNotificationTimestamp,
+        nextAt: newNotificationTimestamp, // Also update nextAt
         status: editingTask.status,
       });
 
       setCurrentView("home");
       setEditingTask(null);
       
-      // Refresh tasks list
-      await fetchTasks();
       toast.success("อัพเดท task สำเร็จแล้ว!");
     } catch (error) {
       console.error("อัพเดท task ล้มเหลว:", error);
@@ -456,7 +469,6 @@ const formatDate = (dateValue, options = {}) => {
     return `${formatted} UTC+7`;
   };
 
-  // UPDATED: Fetches all notifications from the user's specific subcollection
   const fetchTasks = async () => {
     try {
       setLoading(true);
@@ -493,6 +505,7 @@ const formatDate = (dateValue, options = {}) => {
             detail: parentData.detail,
             repeatType: parentData.repeatType,
             notificationTime: notificationData.notificationTime,
+            nextAt: notificationData.nextAt, // Also fetch nextAt
             status: notificationData.status,
             notified: notificationData.notified,
             color: parentData.color || "blue",
@@ -508,25 +521,23 @@ const formatDate = (dateValue, options = {}) => {
     }
   };
 
-  // UPDATED: Sets up a real-time listener on the user's specific tasks subcollection
   const setupTasksListener = () => {
     if (!session?.lineUserId) {
       return () => {};
     }
-    const userTasksCollectionRef = collection(
-      db,
-      "users",
-      session.lineUserId,
-      "tasks"
-    );
-    const parentQuery = query(
-      userTasksCollectionRef,
-      orderBy("createdAt", "desc")
+    // We listen to the entire collection group for this user to catch all changes
+    const notificationsQuery = query(
+      collectionGroup(db, 'notifications'),
+      where('userId', '==', session.lineUserId)
     );
 
-    const unsubscribe = onSnapshot(parentQuery, (parentSnapshot) => {
-      fetchTasks();
+    const unsubscribe = onSnapshot(notificationsQuery, (snapshot) => {
+      console.log("Real-time update received, fetching tasks...");
+      fetchTasks(); 
+    }, (error) => {
+      console.error("Error with tasks listener:", error);
     });
+
     return unsubscribe;
   };
 
@@ -535,40 +546,17 @@ const formatDate = (dateValue, options = {}) => {
       const unsubscribe = setupTasksListener();
       return () => unsubscribe && unsubscribe();
     }
-  }, [session]);
-
-  useEffect(() => {
-    if (session?.lineUserId) {
-      fetchTasks();
-    }
   }, [session?.lineUserId]);
 
-  // const getFilteredTasks = () => {
-  //   let filteredTasks = tasks.filter((task) => task.status === activeTab);
-  //   if (activeTab === "Upcoming" && upcomingFilter !== "All") {
-  //     filteredTasks = filteredTasks.filter((task) => {
-  //       if (!task.notificationTime) return false;
-  //       try {
-  //         const taskDate = task.notificationTime.toDate();
-  //         if (upcomingFilter === "Today") {
-  //           return isToday(taskDate);
-  //         } else if (upcomingFilter === "This Week") {
-  //           return isThisWeek(taskDate);
-  //         }
-  //         return true;
-  //       } catch (error) {
-  //         console.error("Error filtering task by date:", error);
-  //         return false;
-  //       }
-  //     });
-  //   }
-  //   return filteredTasks;
-  // };
-
-  // from linebot/src/app/page.js
-
   const getFilteredTasks = () => {
-    let filteredTasks = tasks.filter((task) => task.status === activeTab);
+    let filteredTasks = tasks.filter((task) => {
+        // For "Incomplete", also show "Snoozed" tasks
+        if (activeTab === "Incomplete") {
+            return task.status === "Incomplete" || task.status === "Snoozed";
+        }
+        return task.status === activeTab;
+    });
+
     if (activeTab === "Upcoming" && upcomingFilter !== "All") {
       filteredTasks = filteredTasks.filter((task) => {
         if (!task.notificationTime) return false;
@@ -587,7 +575,6 @@ const formatDate = (dateValue, options = {}) => {
       });
     }
 
-    // Add this sorting logic to display the nearest tasks first
     if (activeTab === "Upcoming") {
       filteredTasks.sort((a, b) => {
         try {
@@ -612,6 +599,8 @@ const formatDate = (dateValue, options = {}) => {
         return "bg-green-500";
       case "Incomplete":
         return "bg-red-500";
+      case "Snoozed":
+        return "bg-yellow-500";
       default:
         return "bg-gray-500";
     }
@@ -861,9 +850,6 @@ const formatDate = (dateValue, options = {}) => {
                               {task.detail}
                             </p>
                           )}
-                          {/* <div className="flex items-center text-gray-500 text-xs">
-                            <span>Repeat: {task.repeatType}</span>
-                          </div> */}
                         </div>
                         <div className="flex space-x-2 ml-4">
                           {task.status === "Upcoming" && (
@@ -871,7 +857,6 @@ const formatDate = (dateValue, options = {}) => {
                               <button
                                 onClick={async () => {
                                   await handleCompleteTask(task);
-                                  await fetchTasks(); // Refresh list
                                 }}
                                 className="flex items-center space-x-1 text-xs px-2 py-1 bg-green-100 text-green-600 rounded-md hover:bg-green-200 transition-colors"
                               >
@@ -895,7 +880,7 @@ const formatDate = (dateValue, options = {}) => {
                             </>
                           )}
                           {(task.status === "Completed" ||
-                            task.status === "Incomplete") && (
+                            task.status === "Incomplete" || task.status === "Snoozed") && (
                             <div className="flex space-x-2">
                               <button
                                 onClick={() => handleDeleteTask(task)}
@@ -1289,7 +1274,7 @@ const formatDate = (dateValue, options = {}) => {
             <label className="block text-gray-700 text-sm font-medium mb-2">
               Status
             </label>
-            {/* <div className="relative">
+            <div className="relative">
               <select
                 style={{ color: "#000" }}
                 value={editingTask.status}
@@ -1301,9 +1286,10 @@ const formatDate = (dateValue, options = {}) => {
                 <option value="Upcoming">Upcoming</option>
                 <option value="Completed">Completed</option>
                 <option value="Incomplete">Incomplete</option>
+                <option value="Snoozed">Snoozed</option>
               </select>
               <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-            </div> */}
+            </div>
           </div>
           <div>
             <label className="block text-gray-700 text-sm font-medium mb-2">
@@ -1313,10 +1299,8 @@ const formatDate = (dateValue, options = {}) => {
               <select
                 style={{ color: "#000" }}
                 value={editingTask.repeatType}
-                onChange={(e) =>
-                  setEditingTask({ ...editingTask, repeatType: e.target.value })
-                }
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none"
+                disabled // Repeating logic is complex to edit, disable for now
+                className="w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-lg focus:outline-none appearance-none"
               >
                 <option value="Daily">Daily</option>
                 <option value="Weekly">Weekly</option>
@@ -1326,12 +1310,11 @@ const formatDate = (dateValue, options = {}) => {
               <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
             </div>
           </div>
-          {editingTask.status === "Upcoming" && (
+          {editingTask.status !== "Completed" && (
             <div className="flex space-x-2 w-full">
               <button
                 onClick={async () => {
                   await handleCompleteTask(editingTask);
-                  await fetchTasks(); // Refresh list
                 }}
                 className="flex-1 flex items-center justify-center space-x-1 text-xs px-3 py-2 bg-green-100 text-green-600 rounded-md hover:bg-green-200 transition-colors"
               >
@@ -1478,20 +1461,11 @@ const formatDate = (dateValue, options = {}) => {
                       >
                         {task.title}
                       </h3>
-                      {/* {task.detail && (
-                        <p className="text-gray-600 text-sm mb-2">
-                          {task.detail}
-                        </p>
-                      )} */}
                       <div className="flex items-center">
                         <div className="flex items-center text-gray-600 text-sm">
                           <Calendar className="w-4 h-4 mr-2" />
                           <span>{formatDate(task.notificationTime)} น.</span>
                         </div>
-                        {/* <div className="flex items-center text-gray-500 text-sm ml-3">
-                          <Clock className="w-4 h-4 mr-2" />
-                          <span>Repeat: {task.repeatType}</span>
-                        </div> */}
                       </div>
                     </div>
                     <div className="flex flex-col items-end space-y-2">
@@ -1502,45 +1476,6 @@ const formatDate = (dateValue, options = {}) => {
                       >
                         {task.status}
                       </span>
-                      {/* {task.status === "Upcoming" && (
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={async () => {
-                              await handleCompleteTask(task);
-                              await fetchTasks(); // Refresh list after complete
-                            }}
-                            className="flex items-center space-x-1 text-xs px-3 py-1 bg-green-100 text-green-600 rounded-md hover:bg-green-200 transition-colors"
-                          >
-                            <CheckCircle className="w-3 h-3" />
-                            <span>Complete</span>
-                          </button>
-                          <button
-                            onClick={() => handleEditTask(task)}
-                            className="flex items-center space-x-1 text-xs px-3 py-1 bg-blue-100 text-blue-600 rounded-md hover:bg-blue-200 transition-colors"
-                          >
-                            <Edit className="w-3 h-3" />
-                            <span>Edit</span>
-                          </button>
-                          <button
-                            onClick={() => handleDeleteTask(task)}
-                            className="flex items-center space-x-1 text-xs px-3 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            <span>Delete</span>
-                          </button>
-                        </div>
-                      )}
-                      {(task.status === "Completed" || task.status === "Incomplete") && (
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => handleDeleteTask(task)}
-                            className="flex items-center space-x-1 text-xs px-3 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            <span>Delete</span>
-                          </button>
-                        </div>
-                      )} */}
                     </div>
                   </div>
                 </div>
