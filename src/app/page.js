@@ -167,6 +167,7 @@ export default function TaskManager() {
       for (const date of notificationDates) {
         await addDoc(notificationsCollectionRef, {
           notificationTime: Timestamp.fromDate(date),
+          nextdue: Timestamp.fromDate(date),
           status: "Upcoming",
           notified: false,
           userId: session.lineUserId,
@@ -184,7 +185,7 @@ export default function TaskManager() {
         status: "Upcoming",
         endDate: "",
       });
-      
+
       // Refresh tasks list
       await fetchTasks();
       toast.success("Task and notifications added successfully!");
@@ -259,7 +260,7 @@ export default function TaskManager() {
           taskToDelete.id
         )
       );
-      
+
       // Refresh tasks list
       await fetchTasks();
       toast.success("ลบการแจ้งเตือนนี้สำเร็จ!");
@@ -379,22 +380,29 @@ export default function TaskManager() {
         editingTask.id
       );
 
+      const newWhen = Timestamp.fromDate(
+        new Date(`${editingTask.date}T${editingTask.time}`)
+      );
+
+
       await updateDoc(parentTaskRef, {
         title: editingTask.title,
         detail: editingTask.detail,
         updatedAt: Timestamp.now(),
       });
 
+
+
       await updateDoc(notificationRef, {
-        notificationTime: Timestamp.fromDate(
-          new Date(`${editingTask.date}T${editingTask.time}`)
-        ),
+        notificationTime: newWhen,   // UI shows the planned time
+        nextdue: newWhen,            // ✅ keep cron trigger in sync
         status: editingTask.status,
+        notified: false,
       });
 
       setCurrentView("home");
       setEditingTask(null);
-      
+
       // Refresh tasks list
       await fetchTasks();
       toast.success("อัพเดท task สำเร็จแล้ว!");
@@ -404,40 +412,40 @@ export default function TaskManager() {
     }
   };
 
-const formatDate = (dateValue, options = {}) => {
-  if (!dateValue) return "No date";
-  let date;
-  if (dateValue instanceof Timestamp) {
-    date = dateValue.toDate();
-  } else {
-    date = new Date(dateValue);
-  }
-  try {
-    if (isNaN(date.getTime())) return "Invalid Date";
-    
-    // กำหนดชื่อเดือนเป็นภาษาไทย
-    const monthNames = [
-      'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
-      'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
-    ];
-    
-    // กำหนดชื่อวันเป็นภาษาไทย
-    const dayNames = [
-      'อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'
-    ];
-    
-    const dayName = dayNames[date.getDay()];
-    const day = date.getDate();
-    const month = monthNames[date.getMonth()];
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    
-    return `วัน${dayName}ที่ ${day} ${month} ${hours}:${minutes}`;
-    
-  } catch (error) {
-    return "Invalid Date";
-  }
-};
+  const formatDate = (dateValue, options = {}) => {
+    if (!dateValue) return "No date";
+    let date;
+    if (dateValue instanceof Timestamp) {
+      date = dateValue.toDate();
+    } else {
+      date = new Date(dateValue);
+    }
+    try {
+      if (isNaN(date.getTime())) return "Invalid Date";
+
+      // กำหนดชื่อเดือนเป็นภาษาไทย
+      const monthNames = [
+        'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+        'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
+      ];
+
+      // กำหนดชื่อวันเป็นภาษาไทย
+      const dayNames = [
+        'อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'
+      ];
+
+      const dayName = dayNames[date.getDay()];
+      const day = date.getDate();
+      const month = monthNames[date.getMonth()];
+      const hours = date.getHours().toString().padStart(2, '0');
+      const minutes = date.getMinutes().toString().padStart(2, '0');
+
+      return `วัน${dayName}ที่ ${day} ${month} ${hours}:${minutes}`;
+
+    } catch (error) {
+      return "Invalid Date";
+    }
+  };
 
   const formatDateTime = (date, time) => {
     if (!date || !time) return "";
@@ -511,7 +519,7 @@ const formatDate = (dateValue, options = {}) => {
   // UPDATED: Sets up a real-time listener on the user's specific tasks subcollection
   const setupTasksListener = () => {
     if (!session?.lineUserId) {
-      return () => {};
+      return () => { };
     }
     const userTasksCollectionRef = collection(
       db,
@@ -612,8 +620,11 @@ const formatDate = (dateValue, options = {}) => {
         return "bg-green-500";
       case "Incomplete":
         return "bg-red-500";
+      case "Snoozed": 
+        return "bg-yellow-500";
       default:
         return "bg-gray-500";
+
     }
   };
 
@@ -706,13 +717,12 @@ const formatDate = (dateValue, options = {}) => {
           className="h-12 relative hover:bg-gray-50 rounded-lg transition-colors p-1"
         >
           <div
-            className={`w-10 h-10 flex items-center justify-center rounded-full text-sm font-medium transition-colors ${
-              isToday
-                ? "bg-black text-white"
-                : isSelected
+            className={`w-10 h-10 flex items-center justify-center rounded-full text-sm font-medium transition-colors ${isToday
+              ? "bg-black text-white"
+              : isSelected
                 ? "bg-blue-500 text-white"
                 : "text-gray-900 hover:bg-gray-100"
-            }`}
+              }`}
           >
             {day}
           </div>
@@ -721,13 +731,12 @@ const formatDate = (dateValue, options = {}) => {
               {tasksForDay.slice(0, 3).map((task, index) => (
                 <div
                   key={index}
-                  className={`w-2 h-2 rounded-full ${
-                    task.status === "Completed"
-                      ? "bg-green-400"
-                      : task.status === "Incomplete"
+                  className={`w-2 h-2 rounded-full ${task.status === "Completed"
+                    ? "bg-green-400"
+                    : task.status === "Incomplete"
                       ? "bg-red-400"
                       : "bg-blue-400"
-                  }`}
+                    }`}
                 />
               ))}
               {tasksForDay.length > 3 && (
@@ -896,16 +905,16 @@ const formatDate = (dateValue, options = {}) => {
                           )}
                           {(task.status === "Completed" ||
                             task.status === "Incomplete") && (
-                            <div className="flex space-x-2">
-                              <button
-                                onClick={() => handleDeleteTask(task)}
-                                className="flex items-center space-x-1 text-xs px-2 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                                <span>Delete</span>
-                              </button>
-                            </div>
-                          )}
+                              <div className="flex space-x-2">
+                                <button
+                                  onClick={() => handleDeleteTask(task)}
+                                  className="flex items-center space-x-1 text-xs px-2 py-1 bg-red-100 text-red-600 rounded-md hover:bg-red-200 transition-colors"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  <span>Delete</span>
+                                </button>
+                              </div>
+                            )}
                         </div>
                       </div>
                     </div>
@@ -984,11 +993,10 @@ const formatDate = (dateValue, options = {}) => {
                   </h3>
                 </div>
                 <div
-                  className={`w-6 h-6 rounded-full border-2 ${
-                    morningTasks[0].status === "Completed"
-                      ? "bg-red-500 border-red-500"
-                      : "border-red-300"
-                  }`}
+                  className={`w-6 h-6 rounded-full border-2 ${morningTasks[0].status === "Completed"
+                    ? "bg-red-500 border-red-500"
+                    : "border-red-300"
+                    }`}
                 />
               </div>
             )}
@@ -1011,11 +1019,10 @@ const formatDate = (dateValue, options = {}) => {
                   </h3>
                 </div>
                 <div
-                  className={`w-6 h-6 rounded-full border-2 ${
-                    eveningTasks[0].status === "Completed"
-                      ? "bg-blue-500 border-blue-500"
-                      : "border-blue-300"
-                  }`}
+                  className={`w-6 h-6 rounded-full border-2 ${eveningTasks[0].status === "Completed"
+                    ? "bg-blue-500 border-blue-500"
+                    : "border-blue-300"
+                    }`}
                 />
               </div>
             )}
@@ -1424,11 +1431,10 @@ const formatDate = (dateValue, options = {}) => {
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    activeTab === tab
-                      ? "bg-blue-500 text-white"
-                      : "text-gray-500 hover:text-gray-700"
-                  }`}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === tab
+                    ? "bg-blue-500 text-white"
+                    : "text-gray-500 hover:text-gray-700"
+                    }`}
                 >
                   {tab}
                 </button>
@@ -1442,11 +1448,10 @@ const formatDate = (dateValue, options = {}) => {
                   <button
                     key={filter}
                     onClick={() => setUpcomingFilter(filter)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                      upcomingFilter === filter
-                        ? "bg-blue-100 text-blue-600 border border-blue-300"
-                        : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-                    }`}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${upcomingFilter === filter
+                      ? "bg-blue-100 text-blue-600 border border-blue-300"
+                      : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+                      }`}
                   >
                     {filter}
                   </button>
@@ -1465,8 +1470,8 @@ const formatDate = (dateValue, options = {}) => {
               </div>
             ) : (
               getFilteredTasks().map((task) => (
-                <div key={task.id} className="pb-4" style={{borderBottom: '1px solid #E5E5E5'}}>
-                  
+                <div key={task.id} className="pb-4" style={{ borderBottom: '1px solid #E5E5E5' }}>
+
                   <div
                     className="flex justify-between items-start"
                     onClick={() => handleEditTask(task)}
@@ -1549,7 +1554,7 @@ const formatDate = (dateValue, options = {}) => {
           </div>
           <div
             className="fixed bottom-0 left-0 right-0 bg-[#E9F3FF] border-gray-200 py-1"
-            
+
           >
             <div className="flex justify-center items-center py-2">
               <div className="flex items-center space-x-6">

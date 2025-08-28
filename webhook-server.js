@@ -521,25 +521,26 @@ async function handleAddTaskServer(taskData, lineUserId, userName) {
     console.log(`[DEBUG] |--> 📬 Got ${notificationDates.length} dates back from calculateNotificationDates.`);
 
     if (notificationDates.length > 0) {
-        metricsDocRef.update({
+      metricsDocRef.update({
         notifications_expected: FieldValue.increment(notificationDates.length)
-        }).catch(error => console.error("Error updating metrics:", error));
+      }).catch(error => console.error("Error updating metrics:", error));
 
-        const notificationsCollectionRef = docRef.collection("notifications");
-        const batch = db.batch();
-        notificationDates.forEach(date => {
-            const newNotifRef = notificationsCollectionRef.doc();
-            batch.set(newNotifRef, {
-                notificationTime: Timestamp.fromDate(date),
-                status: "Upcoming",
-                notified: false,
-                userId: lineUserId,
-            });
+      const notificationsCollectionRef = docRef.collection("notifications");
+      const batch = db.batch();
+      notificationDates.forEach(date => {
+        const newNotifRef = notificationsCollectionRef.doc();
+        batch.set(newNotifRef, {
+          notificationTime: Timestamp.fromDate(date),
+          nextdue: Timestamp.fromDate(date),
+          status: "Upcoming",
+          notified: false,
+          userId: lineUserId,
         });
-        await batch.commit();
-        console.log(`[DEBUG] |--> Successfully committed a batch of ${notificationDates.length} notifications to Firestore.`);
+      });
+      await batch.commit();
+      console.log(`[DEBUG] |--> Successfully committed a batch of ${notificationDates.length} notifications to Firestore.`);
     } else {
-        console.log(`[DEBUG] |--> ⚠️ No notification dates were generated, so no notifications were written to the database.`);
+      console.log(`[DEBUG] |--> ⚠️ No notification dates were generated, so no notifications were written to the database.`);
     }
 
     console.log(`[${getTimestamp()}] ✅ ${notificationDates.length} notification(s) created.`);
@@ -594,6 +595,66 @@ async function handlePostback(event) {
   const userId = event.source?.userId;
 
   if (!data || !userId) return;
+
+
+  if (data.startsWith("snooze_task_")) {
+    const parts = data.split('_');
+    // ["snooze","task","user","<uid>","task","<taskId>","notification","<notiId>","for","<dur>"]
+    if (parts.length < 10) {
+      await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ ข้อมูลไม่ครบ เลื่อนไม่ได้" }]);
+      return;
+    }
+    const parentTaskId = parts[5];
+    const notificationId = parts[7];
+    const durationKey = parts[9]; // "10m" | "1h" | "tmr8"
+
+    try {
+      const notificationRef = db
+        .collection("users").doc(userId)
+        .collection("tasks").doc(parentTaskId)
+        .collection("notifications").doc(notificationId);
+
+      const snap = await notificationRef.get();
+      if (!snap.exists) {
+        await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ ไม่พบการแจ้งเตือนนี้" }]);
+        return;
+      }
+
+      // compute new nextdue in Asia/Bangkok
+      const nowTH = moment().tz("Asia/Bangkok");
+      let newNext = nowTH.clone();
+
+      if (durationKey === "10m") newNext.add(10, "minutes");
+      else if (durationKey === "1h") newNext.add(1, "hour");
+      else if (durationKey === "tmr8") {
+        newNext = nowTH.clone().add(1, "day").hour(8).minute(0).second(0).millisecond(0);
+      } else {
+        newNext.add(10, "minutes");
+      }
+
+      await notificationRef.update({
+        nextdue: Timestamp.fromDate(newNext.toDate()),   // ← move the trigger
+        notified: false,                                 // ← allow cron to pick it up again
+        status: "Snoozed",
+        snoozedAt: admin.firestore.FieldValue.serverTimestamp(),
+        snoozeFor: durationKey,
+        snoozeCount: admin.firestore.FieldValue.increment(1),
+      });
+
+      await sendReplyMessage(event.replyToken, [{
+        type: "text",
+        text: `เลื่อนไปที่ ${newNext.format("DD/MM/YYYY HH:mm")} แล้วนะ ⏳`
+      }]);
+      return;
+    } catch (err) {
+      console.error("Snooze error:", err);
+      await sendReplyMessage(event.replyToken, [{ type: "text", text: "❌ เลื่อนไม่สำเร็จ กรุณาลองใหม่" }]);
+      return;
+    }
+  }
+
+
+
 
   if (data.startsWith("complete_task_")) {
     const parts = data.split('_');
@@ -659,9 +720,9 @@ app.post("/webhook", (req, res) => {
   events.forEach(async (event, index) => {
     try {
       if (event.type === "message" && event.message?.type === "text") {
-        
+
         if (event.source?.userId) {
-            await startLoadingAnimation(event.source.userId, 10);
+          await startLoadingAnimation(event.source.userId, 10);
         }
 
         const messageText = event.message.text;
@@ -678,7 +739,7 @@ app.post("/webhook", (req, res) => {
           return; // Stop processing this event
         }
         // =================================================================================================
-        
+
 
         metricsDocRef.update({
           messages_to_ai: FieldValue.increment(1)
@@ -705,7 +766,7 @@ app.post("/webhook", (req, res) => {
             console.log(`[DEBUG] ### STARTING 'create_task' INTENT PROCESS ###`);
             console.log(`[DEBUG] #################################################`);
             console.log(`[DEBUG] 1. Raw JSON string from AI:\n${aiOutputJson}`);
-            
+
             const cleanJsonString = aiOutputJson.replace(/```json|```/g, '').trim();
             const aiTaskData = JSON.parse(cleanJsonString);
             console.log(`[DEBUG] 2. Parsed aiTaskData object:`);

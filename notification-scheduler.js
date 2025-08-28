@@ -149,18 +149,31 @@ function createTaskFlexMessage(task) {
         type: "box",
         layout: "horizontal",
         contents: [
+          // {
+          //   type: "button",
+          //   style: "secondary",
+          //   height: "sm",
+          //   flex: 1,
+          //   action: {
+          //     type: "uri",
+          //     label: "View Task",
+          //     uri: liffUrl,
+          //   },
+          //   color: "#eeeeee"
+          // },
           {
             type: "button",
             style: "secondary",
             height: "sm",
             flex: 1,
             action: {
-              type: "uri",
-              label: "View Task",
-              uri: liffUrl,
-            },
-            color: "#eeeeee"
+              type: "postback",
+              label: "Snooze 10m",
+              data: `snooze_task_user_${task.userId}_task_${task.parentId}_notification_${task.id}_for_10m`,
+              displayText: "เลื่อน 10 นาที ⏳"
+            }
           },
+
           {
             type: "button",
             style: "primary",
@@ -222,14 +235,14 @@ async function checkNotifications() {
     const notificationsRef = db.collectionGroup('notifications');
     const notificationsQuery = notificationsRef
       .where('notified', '==', false)
-      .where('notificationTime', '>=', admin.firestore.Timestamp.fromDate(fiveMinutesAgo.toDate()))
-      .where('notificationTime', '<=', admin.firestore.Timestamp.fromDate(now.toDate()));
-
+      .where('nextdue', '>=', admin.firestore.Timestamp.fromDate(fiveMinutesAgo.toDate()))
+      .where('nextdue', '<=', admin.firestore.Timestamp.fromDate(now.toDate()));   // ← switched to nextdue
     console.log(`[${getTimestamp()}] ⚙️ Query details for minute check:`);
     console.log(`[${getTimestamp()}]  - Collection Group: 'notifications'`);
     console.log(`[${getTimestamp()}]  - Filter 1: notified == false`);
-    console.log(`[${getTimestamp()}]  - Filter 2: notificationTime >= ${fiveMinutesAgo.toISOString()}`);
-    console.log(`[${getTimestamp()}]  - Filter 3: notificationTime <= ${now.toISOString()}`);
+    console.log(`[${getTimestamp()}]  - Filter 2: nextdue >= ${fiveMinutesAgo.toISOString()}`);
+    console.log(`[${getTimestamp()}]  - Filter 3: nextdue <= ${now.toISOString()}`);
+
 
     const notificationsSnapshot = await notificationsQuery.get();
 
@@ -358,8 +371,8 @@ async function sendDailySummaryNotifications() {
     const notificationsRef = db.collectionGroup('notifications');
     const notificationsQuery = notificationsRef
       .where('status', '!=', 'Completed')
-      .where('notificationTime', '>=', admin.firestore.Timestamp.fromDate(startOfDay.toDate()))
-      .where('notificationTime', '<=', admin.firestore.Timestamp.fromDate(endOfDay.toDate()));
+      .where('nextdue', '>=', admin.firestore.Timestamp.fromDate(startOfDay.toDate()))
+      .where('nextdue', '<=', admin.firestore.Timestamp.fromDate(endOfDay.toDate())); // ← nextdue window
 
     const notificationsSnapshot = await notificationsQuery.get();
 
@@ -411,7 +424,9 @@ async function handleUsersWithNoTasks(usersWithTasks = new Set()) {
   for (const userDoc of usersSnapshot.docs) {
     const userId = userDoc.id;
     if (!usersWithTasks.has(userId)) {
-      const userHasAnyNotificationsQuery = db.collection('tasks').where('userId', '==', userId).limit(1);
+      const userHasAnyNotificationsQuery = db
+        .collection('users').doc(userId)
+        .collection('tasks').limit(1);
       const userHasAnyNotificationsSnapshot = await userHasAnyNotificationsQuery.get();
       if (!userHasAnyNotificationsSnapshot.empty) {
         console.log(`[${getTimestamp()}] 💌 Sending 'no tasks today' message to user: ${userId}`);
@@ -432,8 +447,8 @@ async function sendDailyWarningNotifications() {
     const notificationsRef = db.collectionGroup('notifications');
     const notificationsQuery = notificationsRef
       .where('status', '!=', 'Completed')
-      .where('notificationTime', '>=', admin.firestore.Timestamp.fromDate(startOfDay.toDate()))
-      .where('notificationTime', '<=', admin.firestore.Timestamp.fromDate(endOfDay.toDate()));
+      .where('nextdue', '>=', admin.firestore.Timestamp.fromDate(startOfDay.toDate()))
+      .where('nextdue', '<=', admin.firestore.Timestamp.fromDate(endOfDay.toDate())); // ← nextdue window
 
     const notificationsSnapshot = await notificationsQuery.get();
 
@@ -485,7 +500,9 @@ async function handleUsersWithNoWarning(usersWithTasks = new Set()) {
   for (const userDoc of usersSnapshot.docs) {
     const userId = userDoc.id;
     if (!usersWithTasks.has(userId)) {
-      const userHasAnyNotificationsQuery = db.collection('tasks').where('userId', '==', userId).limit(1);
+      const userHasAnyNotificationsQuery = db
+        .collection('users').doc(userId)
+        .collection('tasks').limit(1);
       const userHasAnyNotificationsSnapshot = await userHasAnyNotificationsQuery.get();
       if (!userHasAnyNotificationsSnapshot.empty) {
         console.log(`[${getTimestamp()}] 💌 Sending 'no incomplete tasks today' message to user: ${userId}`);
